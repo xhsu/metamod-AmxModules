@@ -5,7 +5,12 @@ import Weather;
 
 import util;
 
-
+/*
+ * Purpose: Cast fog on the map.
+ * @Argument r, g, b: byte color, ranging from 0-255.
+ * @Argument flDensity: thickness of the fog, should be a extremely small decimal number, like 0.001
+ * @Returning: NONE.
+*/
 // DS's array: 0, 0.0005, 0.0009653931, 0.0023708497, 0.0028746934, 0.0029967637, 0.003405156, 0.0038615724, 0.008, 0.008999888
 // native Weather_SetFog(r, g, b, Float:flDensity);
 static cell Native_SetFog(AMX* amx, cell* params) noexcept
@@ -15,6 +20,11 @@ static cell Native_SetFog(AMX* amx, cell* params) noexcept
 	return true;
 }
 
+/*
+ * Purpose: Cast a built-in weather on the map.
+ * @Argument what: can be either clear, rain or snow.
+ * @Returning: NONE.
+*/
 // native Weather_SetReceiveW(EReceiveW:what);
 static cell Native_SetReceiveW(AMX* amx, cell* params) noexcept
 {
@@ -23,6 +33,11 @@ static cell Native_SetReceiveW(AMX* amx, cell* params) noexcept
 	return true;
 }
 
+/*
+ * Purpose: Set a constant lighting level of the map.
+ * @Argument cLightLevel: Ranging from 'a' to 'z', from dimmest to brightest.
+ * @Returning: NONE.
+*/
 // native Weather_SetLightLevel(cLightLevel);
 static cell Native_SetLightLevel(AMX* amx, cell* params) noexcept
 {
@@ -35,6 +50,12 @@ static cell Native_SetLightLevel(AMX* amx, cell* params) noexcept
 	return true;
 }
 
+/*
+ * Purpose: Cast a module-managed weather on the map.
+ * @Argument what: Check the corresponding  enum for more information.
+ * @Argument cLightLevel: Ranging from 'a' to 'z', from dimmest to brightest. Set to 0 or lower to use the default lighting style.
+ * @Returning: NONE.
+*/
 // native Weather_SetWeather(EWeather:what, cLightLevel = 0);
 static cell Native_SetWeather(AMX* amx, cell* params) noexcept
 {
