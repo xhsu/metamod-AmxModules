@@ -1,0 +1,13 @@
+LIBRARY
+EXPORTS
+	GiveFnptrsToDll				@1
+	Meta_Query					@2
+	Meta_Attach					@3
+	Meta_Detach					@4
+	AMXX_Query					@5
+	AMXX_CheckGame				@6
+	AMXX_Attach					@7
+	AMXX_Detach					@8
+	AMXX_PluginsLoaded			@9
+	AMXX_PluginsUnloaded		@10
+	AMXX_PluginsUnloading		@11

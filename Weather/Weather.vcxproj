@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{436bde20-6b32-4b38-9ebc-6bb36b74aad3}</ProjectGuid>
+    <RootNamespace>Weather</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\metamod-AirSupport\MetaMod-Debug.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\metamod-AirSupport\MetaMod-Release.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>C:\Program Files (x86)\Steam\steamapps\common\Half-Life\czero\addons\amxmodx\modules\</OutDir>
+    <TargetName>$(ProjectName)_amxx</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>C:\Program Files (x86)\Steam\steamapps\common\Half-Life\czero\addons\amxmodx\modules\</OutDir>
+    <TargetName>$(ProjectName)_amxx</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ModuleDefinitionFile>$(ProjectDir)..\export.def</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ModuleDefinitionFile>$(ProjectDir)..\export.def</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\Hydrogenium\UtlConcepts.ixx" />
+    <ClCompile Include="..\..\Hydrogenium\UtlHook.ixx" />
+    <ClCompile Include="..\..\Hydrogenium\UtlRandom.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\CBase.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Engine.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Platform.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Query.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Task.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\cl_dll\hud_iface.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\cl_dll\wrect.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\beamdef.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\cl_entity.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\com_model.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\const_.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\con_nprint.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\crc.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\cvardef.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\demo_api.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\director_cmds.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\dlight.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\dll_state.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\engine_launcher_api.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\entity_state.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\entity_types.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\event_api.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\event_args.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\event_flags.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\exefuncs.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\hltv.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\in_buttons.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\ivoicetweak.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\mathlib.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\netadr.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\net_api.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\particledef.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\pmtrace.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\qfont.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\ref_params.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\r_efx.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\r_studioint.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\screenfade.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\studio_event.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\triangleapi.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\usercmd.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\common\weaponinfo.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\activity.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\cdll_dll.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\extdll.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\monsterevent.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\util.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\vector.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\archtypes.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\cdll_int.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\custom.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\customentity.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\edict.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\eiface.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\keydefs.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\progdefs.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\progs.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\Sequence.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\shake.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\sizebuf.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\studio.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\pm_shared\pm_defs.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\pm_shared\pm_info.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\pm_shared\pm_materials.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\pm_shared\pm_movevars.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\pm_shared\pm_shared.ixx" />
+    <ClCompile Include="..\..\metamod-p\metamod\dllapi.ixx" />
+    <ClCompile Include="..\..\metamod-p\metamod\engine_api.ixx" />
+    <ClCompile Include="..\..\metamod-p\metamod\meta_api.ixx" />
+    <ClCompile Include="..\..\metamod-p\metamod\mutil.ixx" />
+    <ClCompile Include="..\..\metamod-p\metamod\plinfo.ixx" />
+    <ClCompile Include="Natives.cpp" />
+    <ClCompile Include="Plugin.cpp" />
+    <ClCompile Include="Plugin.ixx" />
+    <ClCompile Include="Resources.ixx" />
+    <ClCompile Include="Weather.ixx" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
