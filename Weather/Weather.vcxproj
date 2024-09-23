@@ -158,6 +158,7 @@
     <ClCompile Include="..\..\metamod-p\metamod\meta_api.ixx" />
     <ClCompile Include="..\..\metamod-p\metamod\mutil.ixx" />
     <ClCompile Include="..\..\metamod-p\metamod\plinfo.ixx" />
+    <ClCompile Include="Forwards.ixx" />
     <ClCompile Include="Natives.cpp" />
     <ClCompile Include="Plugin.cpp" />
     <ClCompile Include="Plugin.ixx" />

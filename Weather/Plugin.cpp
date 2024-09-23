@@ -1,6 +1,6 @@
 
+import Forwards;
 import Plugin;
-
 import Resources;
 
 import Task;
@@ -621,6 +621,7 @@ int AMXX_Detach() noexcept
 
 int AMXX_PluginsLoaded() noexcept
 {
+	DeployForwards();
 	return AMXX_OK;
 }
 

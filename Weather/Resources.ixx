@@ -20,7 +20,7 @@ export void Resource_Precache() noexcept
 
 	g_bShouldPrecache = false;
 
-	g_fxbeam = (short)g_engfuncs.pfnPrecacheModel("sprites/laserbeam.spr");
+	g_fxbeam = (std::int16_t)g_engfuncs.pfnPrecacheModel("sprites/laserbeam.spr");
 }
 
 export void Resource_GameInit() noexcept

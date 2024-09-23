@@ -1,6 +1,6 @@
 /*
 
-Corresponding Module Version: 1.0.0.7511
+Corresponding Module Version: 1.1.0.7512
 
 Counter-Strike: Modern Warfare Dev Team
  - Programmer: Luna the Reborn
@@ -54,3 +54,37 @@ native Weather_SetLightLevel(cLightLevel);
  * @Returning: NONE.
 */
 native Weather_SetWeather(EWeather:what, cLightLevel = 0);
+
+/*
+ * Event: lightning roars during a thunderstorm.
+ * @Parameter cLightLevel: What lighting level will return after current lightning?
+ * @Stage: Pre.
+ * @Interception: Cannot be intercepted by all means.
+ * @Returning: Discarded.
+ *
+ * Note: Undefined behavior will be invoked should the weather be altered in the forward.
+*/
+forward WeatherF_OnMinorThunder(cLightLevel);
+
+/*
+ * Event: lightning roars during a tempest.
+ * @Parameter cLightLevel: What lighting level will return after current lightning?
+ * @Stage: Pre.
+ * @Interception: Cannot be intercepted by all means.
+ * @Returning: Discarded.
+ *
+ * Note: Undefined behavior will be invoked should the weather be altered in the forward.
+*/
+forward WeatherF_OnMajorThunder(cLightLevel);
+
+/*
+ * Event: Weather changed.
+ * @Parameter iNewWeather: What weather will be changed into?
+ * @Parameter cLightLevel: What lighting level will be considered as the baseline?
+ * @Stage: Post.
+ * @Interception: Cannot be intercepted by all means.
+ * @Returning: Discarded.
+ *
+ * Note: Stack overflow or infinite recursion will occur should the weather be altered again in the forward.
+*/
+forward WeatherF_OnWeatherChange(EWeather:iNewWeather, cLightLevel);

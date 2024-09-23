@@ -368,7 +368,7 @@ export inline constexpr plugin_info_t gPluginInfo =
 {
 	.ifvers		= META_INTERFACE_VERSION,
 	.name		= "Weather",
-	.version	= "1.0.0.7511",
+	.version	= "1.1.0.7512",
 	.date		= __DATE__,
 	.author		= "Luna the Reborn",
 	.url		= "http://www.metamod.org/",

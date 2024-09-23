@@ -7,6 +7,7 @@ import UtlRandom;
 import Task;
 import Query;
 
+import Forwards;
 import Plugin;
 import Resources;
 
@@ -93,6 +94,8 @@ Task Task_VFX_MinorThunder(std::array<char, 2> LightStyle) noexcept
 	{
 		co_await UTIL_Random(10.f, 15.f);
 
+		MF_ExecuteForward(Forwards::OnMinorThunder, (cell)LightStyle[0]);
+
 		for (CBasePlayer* pPlayer : Query::all_players())
 		{
 			g_engfuncs.pfnClientCommand(pPlayer->edict(), "spk %s\n", UTIL_GetRandomOne(thundersound).data());
@@ -119,6 +122,8 @@ Task Task_VFX_MajorThunder(std::array<char, 2> LightStyle) noexcept
 	for (;;)
 	{
 		co_await UTIL_Random(2.f, 4.5f);
+
+		MF_ExecuteForward(Forwards::OnMajorThunder, (cell)LightStyle[0]);
 
 		// Make lightning
 		for (iLightningCount = UTIL_Random(1, 2); iLightningCount; --iLightningCount)
@@ -232,6 +237,8 @@ export void Sunny(char LightLevel = 'f') noexcept
 	UTIL_SetFog(0, 0, 0, 0);
 	UTIL_SetReceiveW(EReceiveW::Clear);
 	g_engfuncs.pfnLightStyle(0, szLightLevel.data());
+
+	MF_ExecuteForward(Forwards::OnWeatherChange, (cell)EWeather::Sunny, (cell)LightLevel);
 }
 
 export void Drizzle(char LightLevel = 'e') noexcept
@@ -247,6 +254,8 @@ export void Drizzle(char LightLevel = 'e') noexcept
 	g_engfuncs.pfnLightStyle(0, szLightLevel.data());
 
 	TaskScheduler::Enroll(Task_Sound_MinorRain());
+
+	MF_ExecuteForward(Forwards::OnWeatherChange, (cell)EWeather::Drizzle, (cell)LightLevel);
 }
 
 export void ThunderStorm(char LightLevel = 'c') noexcept
@@ -263,6 +272,8 @@ export void ThunderStorm(char LightLevel = 'c') noexcept
 
 	TaskScheduler::Enroll(Task_Sound_MinorRain());
 	TaskScheduler::Enroll(Task_VFX_MinorThunder(szLightLevel));
+
+	MF_ExecuteForward(Forwards::OnWeatherChange, (cell)EWeather::ThunderStorm, (cell)LightLevel);
 }
 
 export void Tempest(char LightLevel = 'b') noexcept
@@ -279,6 +290,8 @@ export void Tempest(char LightLevel = 'b') noexcept
 
 	TaskScheduler::Enroll(Task_Sound_MajorRain());
 	TaskScheduler::Enroll(Task_VFX_MajorThunder(szLightLevel));
+
+	MF_ExecuteForward(Forwards::OnWeatherChange, (cell)EWeather::Tempest, (cell)LightLevel);
 }
 
 export void Snow(char LightLevel = 'e') noexcept
@@ -292,6 +305,8 @@ export void Snow(char LightLevel = 'e') noexcept
 	UTIL_SetFog(200, 200, 200, 0.00386f);
 	UTIL_SetReceiveW(EReceiveW::Snow);
 	g_engfuncs.pfnLightStyle(0, szLightLevel.data());
+
+	MF_ExecuteForward(Forwards::OnWeatherChange, (cell)EWeather::Snow, (cell)LightLevel);
 }
 
 export void Fog(char LightLevel = 'e') noexcept
@@ -318,6 +333,8 @@ export void BlackFog(char LightLevel = 'e') noexcept
 	UTIL_SetFog(0, 0, 0, 0.0023708497f);
 	UTIL_SetReceiveW(EReceiveW::Clear);
 	g_engfuncs.pfnLightStyle(0, szLightLevel.data());
+
+	MF_ExecuteForward(Forwards::OnWeatherChange, (cell)EWeather::BlackFog, (cell)LightLevel);
 }
 
 export void Sleet(char LightLevel = 'e') noexcept
@@ -333,4 +350,6 @@ export void Sleet(char LightLevel = 'e') noexcept
 	g_engfuncs.pfnLightStyle(0, szLightLevel.data());
 
 	TaskScheduler::Enroll(Task_VFX_Sleet());
+
+	MF_ExecuteForward(Forwards::OnWeatherChange, (cell)EWeather::Sleet, (cell)LightLevel);
 }
