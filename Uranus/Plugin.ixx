@@ -368,7 +368,7 @@ export inline constexpr plugin_info_t gPluginInfo =
 {
 	.ifvers		= META_INTERFACE_VERSION,
 	.name		= "Uranus",
-	.version	= "1.0.0",
+	.version	= "1.1.0",
 	.date		= __DATE__,
 	.author		= "xhsu",
 	.url		= "http://www.metamod.org/",

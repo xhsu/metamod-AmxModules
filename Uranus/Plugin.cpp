@@ -7,6 +7,10 @@ import Uranus;
 extern void DeployNatives() noexcept;
 //
 
+// MoneyLimit.cpp
+extern void DeployMoneyHook() noexcept;
+//
+
 // Receive engine function table from engine.
 // This appears to be the _first_ DLL routine called by the engine, so we do some setup operations here.
 void __stdcall GiveFnptrsToDll(enginefuncs_t *pengfuncsFromEngine, globalvars_t *pGlobals) noexcept
@@ -43,7 +47,7 @@ int HookGameDLLExportedFn(DLL_FUNCTIONS *pFunctionTable, int *interfaceVersion) 
 		.pfnClientPutInServer		= nullptr,
 		.pfnClientCommand			= nullptr,
 		.pfnClientUserInfoChanged	= nullptr,
-		.pfnServerActivate			= nullptr,
+		.pfnServerActivate			= [](edict_t* pEdictList, int edictCount, int clientMax) noexcept { DeployMoneyHook(); },
 		.pfnServerDeactivate		= nullptr,
 
 		.pfnPlayerPreThink	= nullptr,

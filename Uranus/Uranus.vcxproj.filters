@@ -267,5 +267,8 @@
     <ClCompile Include="Forwards.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="MoneyLimit.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -159,6 +159,7 @@
     <ClCompile Include="..\..\metamod-p\metamod\mutil.ixx" />
     <ClCompile Include="..\..\metamod-p\metamod\plinfo.ixx" />
     <ClCompile Include="Forwards.cpp" />
+    <ClCompile Include="MoneyLimit.cpp" />
     <ClCompile Include="Natives.cpp" />
     <ClCompile Include="Plugin.cpp" />
     <ClCompile Include="Plugin.ixx" />
