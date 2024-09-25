@@ -8,7 +8,7 @@ extern void DeployNatives() noexcept;
 //
 
 // MoneyLimit.cpp
-extern void DeployMoneyHook() noexcept;
+extern void DeployMoneyHook(int32_t iLimit = 99999) noexcept;
 //
 
 // Receive engine function table from engine.

@@ -270,5 +270,8 @@
     <ClCompile Include="Weather.ixx">
       <Filter>Sources</Filter>
     </ClCompile>
+    <ClCompile Include="Forwards.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
