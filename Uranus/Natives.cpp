@@ -5,8 +5,6 @@ import Plugin;
 import CBase;
 import Uranus;
 
-import util;
-
 // native Uranus_DropShield(iPlayer);
 static cell Native_DropShield(AMX* amx, cell* params) noexcept
 {

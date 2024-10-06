@@ -8,14 +8,14 @@ extern void DeployNatives() noexcept;
 //
 
 // MoneyLimit.cpp
-extern void DeployMoneyHook(int32_t iLimit = 99999) noexcept;
+extern void DeployMoneyHook(std::int32_t iLimit = 99999) noexcept;
 //
 
 // Receive engine function table from engine.
 // This appears to be the _first_ DLL routine called by the engine, so we do some setup operations here.
 void __stdcall GiveFnptrsToDll(enginefuncs_t *pengfuncsFromEngine, globalvars_t *pGlobals) noexcept
 {
-	memcpy(&g_engfuncs, pengfuncsFromEngine, sizeof(enginefuncs_t));
+	std::memcpy(&g_engfuncs, pengfuncsFromEngine, sizeof(enginefuncs_t));
 	gpGlobals = pGlobals;
 }
 
@@ -99,7 +99,7 @@ int HookGameDLLExportedFn(DLL_FUNCTIONS *pFunctionTable, int *interfaceVersion) 
 		return false;
 	}
 
-	memcpy(pFunctionTable, &gFunctionTable, sizeof(DLL_FUNCTIONS));
+	std::memcpy(pFunctionTable, &gFunctionTable, sizeof(DLL_FUNCTIONS));
 	return true;
 }
 
@@ -183,7 +183,7 @@ int HookGameDLLExportedFn_Post(DLL_FUNCTIONS *pFunctionTable, int *interfaceVers
 		return false;
 	}
 
-	memcpy(pFunctionTable, &gFunctionTable, sizeof(DLL_FUNCTIONS));
+	std::memcpy(pFunctionTable, &gFunctionTable, sizeof(DLL_FUNCTIONS));
 	return true;
 }
 
@@ -415,7 +415,7 @@ int HookEngineAPI(enginefuncs_t *pengfuncsFromEngine, int *interfaceVersion) noe
 		return false;
 	}
 
-	memcpy(pengfuncsFromEngine, &meta_engfuncs, sizeof(enginefuncs_t));
+	std::memcpy(pengfuncsFromEngine, &meta_engfuncs, sizeof(enginefuncs_t));
 	return true;
 }
 
@@ -466,7 +466,7 @@ int Meta_Attach(PLUG_LOADTIME iCurrentPhase, META_FUNCTIONS *pFunctionTable, met
 		return false;
 	}
 
-	memcpy(pFunctionTable, &gMetaFunctionTable, sizeof(META_FUNCTIONS));
+	std::memcpy(pFunctionTable, &gMetaFunctionTable, sizeof(META_FUNCTIONS));
 	gpGamedllFuncs = pGamedllFuncs;
 	return true;
 }
@@ -483,7 +483,7 @@ static_assert(std::same_as<decltype(&Meta_Detach), META_DETACH_FN>);
 
 /************* AMXX Stuff *************/
 // *** Exports ***
-int AMXX_Query(int *interfaceVersion, amxx_module_info_s *moduleInfo) noexcept
+int AMXX_Query(int *interfaceVersion, amxx_module_info_t *moduleInfo) noexcept
 {
 	// check parameters
 	if (!interfaceVersion || !moduleInfo)
@@ -498,7 +498,7 @@ int AMXX_Query(int *interfaceVersion, amxx_module_info_s *moduleInfo) noexcept
 	}
 
 	// copy module info
-	memcpy(moduleInfo, &g_ModuleInfo, sizeof(amxx_module_info_s));
+	std::memcpy(moduleInfo, &g_ModuleInfo, sizeof(amxx_module_info_t));
 
 	// Everything ok :)
 	return AMXX_OK;
