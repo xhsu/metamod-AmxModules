@@ -84,6 +84,7 @@ void DeployNatives() noexcept
 	{
 		{ "MEE_RegisterEntitySpawn",	&Native_RegisterEntitySpawn },
 		{ "MEE_RegisterEntityKvd",		&Native_RegisterEntityKvd },
+		{ "MEE_ReplaceLinkedClass",		&Native_ReplaceLinkedClass },
 
 		{ nullptr, nullptr },
 	};
