@@ -57,6 +57,27 @@ static cell Native_RegisterEntityKvd(AMX* amx, cell* params) noexcept
 	return rgiForwards.back();
 }
 
+// native MEE_ReplaceLinkedClass(const szOriginalClassName[], const szDestClassName[]);
+static cell Native_ReplaceLinkedClass(AMX* amx, cell* params) noexcept
+{
+	int dummy{};
+	auto const pszOrgClassName = MF_GetAmxString(amx, params[1], 0, &dummy);
+	auto const pszDestClassName = MF_GetAmxString(amx, params[2], 0, &dummy);
+
+	std::string szOrgClassName{ pszOrgClassName }, szDestClassName{ pszDestClassName };
+
+	auto [it, bAdded] =
+		gLinkedEntityReplace.try_emplace(std::move(szOrgClassName), std::move(szDestClassName));
+
+	if (!bAdded)
+	{
+		MF_LogError(amx, AMX_ERR_NATIVE, "Entity class '%s' had been registered to replace with '%s'.", it->first.c_str(), it->second.c_str());
+		return false;
+	}
+
+	return true;
+}
+
 void DeployNatives() noexcept
 {
 	static constexpr AMX_NATIVE_INFO rgAmxNativeInfo[] =

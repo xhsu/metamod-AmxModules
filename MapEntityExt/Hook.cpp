@@ -49,6 +49,13 @@ struct CBaseCustom : Prefab_t
 
 PFN_ENTITYINIT __cdecl OrpheuF_GetDispatch(char const* pszClassName) noexcept
 {
+	if (auto const it = gLinkedEntityReplace.find(pszClassName);
+		it != gLinkedEntityReplace.end())
+	{
+		// Replacement first, it might just being forward into CBaseCustom
+		pszClassName = it->second.c_str();
+	}
+
 	if (gRegisterEntityKvd.contains(pszClassName)
 		|| gRegisterEntitySpawn.contains(pszClassName))
 	{

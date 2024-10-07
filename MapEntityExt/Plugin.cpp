@@ -10,6 +10,8 @@ import Uranus;
 import VTFH;
 import WinAPI;
 
+import UtlHook;
+
 // Native.cpp
 extern void DeployNatives() noexcept;
 //
@@ -129,7 +131,7 @@ int HookGameDLLExportedFn_Post(DLL_FUNCTIONS *pFunctionTable, int *interfaceVers
 {
 	static constexpr DLL_FUNCTIONS gFunctionTable =
 	{
-		.pfnGameInit = []() noexcept { Uranus::RetrieveUranusLocal(); HookInfo::GetDispatch.ApplyOn(gUranusCollection.pfnGetDispatch); },
+		.pfnGameInit = []() noexcept { UTIL_SearchPattern<HW::GetDispatch>(); HookInfo::GetDispatch.ApplyOn(gUranusCollection.pfnGetDispatch); },
 		.pfnSpawn		= nullptr,
 		.pfnThink		= nullptr,
 		.pfnUse			= nullptr,
