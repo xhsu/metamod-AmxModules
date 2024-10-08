@@ -9,6 +9,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Weather", "Weather\Weather.
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MapEntityExt", "MapEntityExt\MapEntityExt.vcxproj", "{5A3E36AF-B541-4731-9E97-4948BBB0F7DC}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ProjectPWB", "ProjectPWB\ProjectPWB.vcxproj", "{FFC4A559-360E-45DC-95CB-546858A7B269}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -27,6 +29,10 @@ Global
 		{5A3E36AF-B541-4731-9E97-4948BBB0F7DC}.Debug|Win32.Build.0 = Debug|Win32
 		{5A3E36AF-B541-4731-9E97-4948BBB0F7DC}.Release|Win32.ActiveCfg = Release|Win32
 		{5A3E36AF-B541-4731-9E97-4948BBB0F7DC}.Release|Win32.Build.0 = Release|Win32
+		{FFC4A559-360E-45DC-95CB-546858A7B269}.Debug|Win32.ActiveCfg = Debug|Win32
+		{FFC4A559-360E-45DC-95CB-546858A7B269}.Debug|Win32.Build.0 = Debug|Win32
+		{FFC4A559-360E-45DC-95CB-546858A7B269}.Release|Win32.ActiveCfg = Release|Win32
+		{FFC4A559-360E-45DC-95CB-546858A7B269}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

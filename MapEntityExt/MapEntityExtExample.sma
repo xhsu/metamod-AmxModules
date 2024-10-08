@@ -1,6 +1,6 @@
 /*
 
-Corresponding Module Version: 1.1.0
+Corresponding Module Version: 1.1.1
 
 Dev Team
  - Programmer: Luna the Reborn
@@ -45,7 +45,7 @@ native MEE_ReplaceLinkedClass(const szOriginalClassName[], const szDestClassName
 #pragma semicolon 1
 
 #define PLUGIN		"Map Ent Extention Example"
-#define VERSION		"1.1.0"
+#define VERSION		"1.1.1"
 #define AUTHOR		"xhsu"
 
 public plugin_init()
