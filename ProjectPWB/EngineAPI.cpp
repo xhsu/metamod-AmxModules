@@ -1,6 +1,9 @@
 import std;
 import hlsdk;
 
+import CBase;
+import Configs;
+import Entities;
 import Hook;
 import Plugin;
 
@@ -29,6 +32,19 @@ void fw_SetModel(edict_t* pEdict, const char* pszModel) noexcept
 		gpMetaGlobals->mres = MRES_SUPERCEDE;
 		g_engfuncs.pfnSetModel(pEdict, THE_BPW_MODEL);
 		pEdict->v.body = gWorldModelRpl.at(pszModel);
+
+		// The followings are weaponbox phys
+
+		Materialization(&pEdict->v);
+
+		EHANDLE<CBasePlayer> pPlayer{ pEdict->v.owner };
+		if (pPlayer && pPlayer->IsAlive())
+		{
+			g_engfuncs.pfnSetOrigin(pEdict, UTIL_GetPlayerFront(pPlayer->pev, 64.f));
+			pEdict->v.velocity = pPlayer->pev->v_angle.Front() * (float)cvar_throwingweaponvelocity;
+		}
+
+		FreeRotationInTheAir(&pEdict->v);
 	}
 }
 

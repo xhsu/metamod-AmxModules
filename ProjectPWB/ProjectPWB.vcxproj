@@ -86,8 +86,10 @@
     <ClCompile Include="..\..\Hydrogenium\UtlHook.ixx" />
     <ClCompile Include="..\..\Hydrogenium\UtlRandom.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\CBase.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ConsoleVar.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Engine.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\FileSystem.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Message.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Platform.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Prefab.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Task.ixx" />
@@ -106,6 +108,7 @@
     <ClCompile Include="..\Common\UtlString.ixx" />
     <ClCompile Include="..\Common\WinAPI.cpp" />
     <ClCompile Include="..\Common\WinAPI.ixx" />
+    <ClCompile Include="Configs.ixx" />
     <ClCompile Include="EngineAPI.cpp" />
     <ClCompile Include="Entities.cpp" />
     <ClCompile Include="Entities.ixx" />

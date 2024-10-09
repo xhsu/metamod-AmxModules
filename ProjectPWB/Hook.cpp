@@ -25,7 +25,7 @@ qboolean __fastcall OrpheuF_DefaultDeploy(
 	{
 		g_engfuncs.pfnSetModel(pWeapon->edict(), THE_BPW_MODEL);
 
-		pWeapon->pev->effects = EF_LIGHT;
+		pWeapon->pev->effects = 0;
 		pWeapon->pev->body = gWorldModelRpl.at(pszWeaponModel);
 		pWeapon->pev->aiment = pWeapon->m_pPlayer->edict();
 		pWeapon->pev->movetype = MOVETYPE_FOLLOW;
@@ -45,7 +45,7 @@ void __fastcall HamF_Item_Holster(CBasePlayerItem* pWeapon, std::uintptr_t edx, 
 
 	g_engfuncs.pfnSetModel(pWeapon->edict(), THE_BPW_MODEL);
 
-	pWeapon->pev->effects = EF_LIGHT;
+	pWeapon->pev->effects = 0;
 	pWeapon->pev->body = gBackModelRpl.at(szClassName);
 	pWeapon->pev->aiment = pWeapon->m_pPlayer->edict();
 	pWeapon->pev->movetype = MOVETYPE_FOLLOW;

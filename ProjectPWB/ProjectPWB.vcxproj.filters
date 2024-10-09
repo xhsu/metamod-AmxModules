@@ -114,6 +114,15 @@
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\FileSystem.ixx">
       <Filter>CSDK</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Message.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="Configs.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ConsoleVar.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.hpp">

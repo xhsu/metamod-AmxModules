@@ -1,11 +1,14 @@
 ﻿import std;
 import hlsdk;
 
+import Entities;
 import FileSystem;
 import Hook;
 import Plugin;
 import Task;
 import Uranus;
+
+import UtlString;
 
 
 static bool g_bShouldPrecache = true;
@@ -24,6 +27,9 @@ auto fw_Spawn_Post(edict_t* pEdict) noexcept -> qboolean
 	[[likely]]
 	if (!g_bShouldPrecache)
 		return 0;
+
+	g_engfuncs.pfnPrecacheSound(WEAPONBOX_SFX_DROP);
+	g_engfuncs.pfnPrecacheSound(WEAPONBOX_SFX_HIT);
 
 	g_bShouldPrecache = false;
 	return 0;
@@ -53,6 +59,40 @@ void fw_Touch_Post(edict_t* pentTouched, edict_t* pentOther) noexcept
 	pentOther->v.velocity = -vecVel;
 }
 
+META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
+{
+	if (szCmd == "take_your")
+	{
+		if (g_engfuncs.pfnCmd_Argc() != 2)
+			return MRES_SUPERCEDE;
+
+		auto const iSlot = UTIL_StrToNum<int>(g_engfuncs.pfnCmd_Argv(1));
+
+		if (iSlot < 1 || iSlot > 5)
+			return MRES_SUPERCEDE;
+
+		auto const vecSrc = pPlayer->pev->origin + pPlayer->pev->view_ofs;
+		auto const vecEnd = vecSrc + pPlayer->pev->v_angle.Front() * 8192.0;
+
+		TraceResult tr{};
+		g_engfuncs.pfnTraceLine(vecSrc, vecEnd, dont_ignore_glass | dont_ignore_monsters, pPlayer->edict(), &tr);
+
+		if (pev_valid(tr.pHit) != EValidity::Full)
+			return MRES_SUPERCEDE;
+
+		EHANDLE<CBaseEntity> pEnt{ tr.pHit };
+		if (auto const pTarget = pEnt.As<CBasePlayer>())
+		{
+			if (pTarget->m_rgpPlayerItems[iSlot] != nullptr)
+				Uranus::BasePlayer::SelectItem{}(pTarget, STRING(pTarget->m_rgpPlayerItems[iSlot]->pev->classname));
+		}
+
+		return MRES_SUPERCEDE;
+	}
+
+	return MRES_IGNORED;
+}
+
 void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) noexcept
 {
 	static bool bHooked = false;
@@ -62,6 +102,7 @@ void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) 
 	{
 		HookInfo::DefaultDeploy.ApplyOn(gUranusCollection.pfnDefaultDeploy);
 		DeployVftInjection();
+		DeployWeaponBoxHook();
 
 		bHooked = true;
 	}
@@ -107,6 +148,8 @@ META_RES fw_PM_Move(playermove_t* ppmove, qboolean server) noexcept
 			continue;
 		}
 
+		// kick the weaponbox out of phyents list is still needed.
+		// 'cause we wish it blocks no player.
 		if (ppmove->physents[i].fuser4 == 9527.f)
 			continue;
 
@@ -157,25 +200,6 @@ META_RES fw_PlayerPostThink(edict_t*) noexcept
 
 	g_bShouldRestore = false;
 	return MRES_HANDLED;
-}
-
-// irrelevent with the solid hacking.
-void fw_PlayerPostThink_Post(edict_t* pEdict) noexcept
-{
-	if (!pEdict->pvPrivateData)
-		return;
-
-	CBasePlayer* pPlayer = ent_cast<CBasePlayer*>(pEdict);
-
-	for (auto pWeapon : pPlayer->m_rgpPlayerItems)
-	{
-		for (; pWeapon; pWeapon = pWeapon->m_pNext)
-		{
-			if (FClassnameIs(pWeapon->pev, "weapon_ak47"))
-			{
-			}
-		}
-	}
 }
 
 qboolean fw_AddToFullPack_Post(entity_state_t* pState, int iEntIndex, edict_t* pEdict, edict_t* pClientSendTo, qboolean cl_lw, qboolean bIsPlayer, unsigned char* pSet) noexcept

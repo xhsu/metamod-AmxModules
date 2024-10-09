@@ -12,12 +12,12 @@ import Uranus;
 extern void fw_GameInit_Post() noexcept;
 extern auto fw_Spawn_Post(edict_t* pEdict) noexcept -> qboolean;
 extern void fw_Touch_Post(edict_t* pentTouched, edict_t* pentOther) noexcept;
+extern META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept;
 extern void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) noexcept;
 extern void fw_ServerDeactivate_Post() noexcept;
 extern META_RES fw_PM_Move(playermove_t* ppmove, qboolean server) noexcept;
 extern void fw_PM_Move_Post(playermove_t* ppmove, qboolean server) noexcept;
 extern META_RES fw_PlayerPostThink(edict_t*) noexcept;
-extern void fw_PlayerPostThink_Post(edict_t* pEdict) noexcept;
 extern qboolean fw_AddToFullPack_Post(entity_state_t* pState, int iEntIndex, edict_t* pEdict, edict_t* pClientSendTo, qboolean cl_lw, qboolean bIsPlayer, unsigned char* pSet) noexcept;
 //
 
@@ -62,7 +62,7 @@ static int HookGameDLLExportedFn(DLL_FUNCTIONS *pFunctionTable, int *interfaceVe
 		.pfnClientDisconnect	= nullptr,
 		.pfnClientKill			= nullptr,
 		.pfnClientPutInServer	= nullptr,
-		.pfnClientCommand		= nullptr,
+		.pfnClientCommand		= [](edict_t* pPlayer) noexcept { gpMetaGlobals->mres = OnClientCommand((CBasePlayer*)pPlayer->pvPrivateData, g_engfuncs.pfnCmd_Argv(0)); },
 		.pfnClientUserInfoChanged	= nullptr,
 		.pfnServerActivate		= nullptr,
 		.pfnServerDeactivate	= nullptr,
@@ -152,7 +152,7 @@ static int HookGameDLLExportedFn_Post(DLL_FUNCTIONS *pFunctionTable, int *interf
 		.pfnServerDeactivate	= &fw_ServerDeactivate_Post,
 
 		.pfnPlayerPreThink	= nullptr,
-		.pfnPlayerPostThink	= &fw_PlayerPostThink_Post,
+		.pfnPlayerPostThink	= nullptr,
 
 		.pfnStartFrame		= &TaskScheduler::Think,
 		.pfnParmsNewLevel	= nullptr,
