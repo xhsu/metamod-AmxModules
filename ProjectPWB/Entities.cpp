@@ -14,6 +14,7 @@ static fnEntityTakeDamage_t gpfnOrgWpnBoxTakeDamage = nullptr;
 static void __fastcall HamF_Touch(CWeaponBox* pThis, std::uintptr_t edx, CBaseEntity* pOther) noexcept
 {
 	gpfnOrgWpnBoxTouch(pThis, pOther);
+	// Post
 
 	auto const pev = pThis->pev;
 
@@ -45,7 +46,26 @@ static void __fastcall HamF_Touch(CWeaponBox* pThis, std::uintptr_t edx, CBaseEn
 
 			if (tr.flFraction < 1.f)
 			{
-				pev->angles = tr.vecPlaneNormal.VectorAngles();
+				//pev->angles = tr.vecPlaneNormal.VectorAngles();
+				//pev->angles[0] = -pev->angles[0];
+
+				// Out quaternion has two problems.
+				// 1. When the angle is UP, no rotation could happen.
+				// 2. When the angle is LEFT, the cross-product is therefore vecZero, which leads to no quaternion could be calculated.
+				static constexpr Vector VEC_ALMOST_RIGHT{ 0.99999946, 0, 0.0010010005 };	// #UPDATE_AT_CPP26 constexpr math expanded
+				auto qRot = Quaternion::Identity();
+
+				pev->armorvalue += UTIL_Random(pThis->m_flReleaseThrow / 2.f, pThis->m_flReleaseThrow);
+				if (pev->armorvalue > 360.f)
+					pev->armorvalue -= 360.f;
+
+				// Step 2: Random direction on the floor
+				qRot *= Quaternion::AxisAngle(tr.vecPlaneNormal, pev->armorvalue);
+
+				// Step 1: Rotate to the normal
+				qRot *= Quaternion::Rotate(VEC_ALMOST_RIGHT, tr.vecPlaneNormal);
+
+				pev->angles = qRot.Euler();
 				pev->angles[0] = -pev->angles[0];
 			}
 		}

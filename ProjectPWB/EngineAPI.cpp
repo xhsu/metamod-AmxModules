@@ -7,6 +7,9 @@ import Entities;
 import Hook;
 import Plugin;
 
+import UtlRandom;
+
+
 
 auto fw_PrecacheModel(const char* psz) noexcept -> int
 {
@@ -33,6 +36,13 @@ void fw_SetModel(edict_t* pEdict, const char* pszModel) noexcept
 		g_engfuncs.pfnSetModel(pEdict, THE_BPW_MODEL);
 		pEdict->v.body = gWorldModelRpl.at(pszModel);
 
+		if (gWorldModelSeq.contains(pszModel))
+		{
+			pEdict->v.sequence = gWorldModelSeq.at(pszModel);
+			pEdict->v.framerate = 1.f;
+			pEdict->v.animtime = gpGlobals->time;
+		}
+
 		// The followings are weaponbox phys
 
 		Materialization(&pEdict->v);
@@ -45,6 +55,11 @@ void fw_SetModel(edict_t* pEdict, const char* pszModel) noexcept
 		}
 
 		FreeRotationInTheAir(&pEdict->v);
+
+		// Rotating on ground init.
+		pEdict->v.armorvalue = UTIL_Random(0.f, 360.f);
+		auto const pWeaponBox = ent_cast<CBaseEntity*>(pEdict);
+		pWeaponBox->m_flReleaseThrow = UTIL_Random(0.5f, 2.f) * (UTIL_Random() ? -1.f : 1.f);
 	}
 }
 

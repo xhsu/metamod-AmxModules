@@ -7,6 +7,7 @@ import Hook;
 import Plugin;
 import Task;
 import Uranus;
+import ConsoleVar;
 
 import UtlString;
 
@@ -89,12 +90,54 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 
 		return MRES_SUPERCEDE;
 	}
+	else if (szCmd == "give_you")	// #BUGBUG crash if switched.
+	{
+		if (g_engfuncs.pfnCmd_Argc() != 2)
+			return MRES_SUPERCEDE;
+
+		auto const iStr = MAKE_STRING_UNSAFE(g_engfuncs.pfnCmd_Argv(1));
+
+		auto const vecSrc = pPlayer->pev->origin + pPlayer->pev->view_ofs;
+		auto const vecEnd = vecSrc + pPlayer->pev->v_angle.Front() * 8192.0;
+
+		TraceResult tr{};
+		g_engfuncs.pfnTraceLine(vecSrc, vecEnd, dont_ignore_glass | dont_ignore_monsters, pPlayer->edict(), &tr);
+
+		if (pev_valid(tr.pHit) != EValidity::Full)
+			return MRES_SUPERCEDE;
+
+		EHANDLE<CBaseEntity> pEnt{ tr.pHit };
+		if (auto const pTarget = pEnt.As<CBasePlayer>())
+		{
+			// This is just a modified version of CBP::GiveNamedItem()
+
+			auto const pEdict = g_engfuncs.pfnCreateNamedEntity(iStr);
+			if (pev_valid(pEdict) != EValidity::Full)
+				return MRES_SUPERCEDE;
+
+			pEdict->v.origin = pTarget->pev->origin;
+			pEdict->v.spawnflags |= SF_NORESPAWN;
+
+			gpGamedllFuncs->dllapi_table->pfnSpawn(pEdict);
+
+			auto const iSolid = pEdict->v.solid;
+			gpGamedllFuncs->dllapi_table->pfnTouch(pEdict, pTarget->edict());
+
+			if (iSolid != pEdict->v.solid)
+				return MRES_SUPERCEDE;
+
+			pEdict->v.flags |= FL_KILLME;
+			return MRES_SUPERCEDE;
+		}
+	}
 
 	return MRES_IGNORED;
 }
 
 void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) noexcept
 {
+	CVarManager::Init();
+
 	static bool bHooked = false;
 
 	[[unlikely]]

@@ -19,6 +19,8 @@ struct rpl_info_t
 export inline constexpr char THE_BPW_MODEL[] = "models/bpw_001.mdl";
 export inline std::vector<BodyEnumInfo_t> gModelMeshGroupsInfo{};
 export inline std::map<std::string, int, std::less<>> gWorldModelRpl{};	// KEY<model_path>, VALUE<BODY>
+export inline std::map<std::string, int, std::less<>> gWorldModelSeq{};	// KEY<model_path>, VALUE<SEQ>
+export inline std::map<std::string_view, std::string, std::less<>> gPlayerPosture{};	// KEY<model_path>, VALUE<ANIM>
 export inline std::map<std::string_view, int, std::less<>> gBackModelRpl{};	// KEY<classname>, VALUE<BODY>
 
 /*

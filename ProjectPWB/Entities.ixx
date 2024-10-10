@@ -41,7 +41,7 @@ export void PlayerKick(entvars_t* pev, edict_t* pPlayer) noexcept
 
 	// Add player velocity as if it were taken by the player.
 	pev->velocity =
-		vecVel + pPlayer->v.velocity * 1.65f;
+		vecVel + pPlayer->v.velocity;
 }
 
 export inline void UTIL_Spark(Vector const& vecOrigin) noexcept

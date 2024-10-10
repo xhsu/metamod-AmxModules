@@ -13,6 +13,7 @@ import Hook;
 import Plugin;
 
 import UtlHook;
+import UtlString;
 
 
 
@@ -21,6 +22,19 @@ qboolean __fastcall OrpheuF_DefaultDeploy(
 	const char* pszViewModel, const char* pszWeaponModel, int iAnim, const char* szAnimExt,
 	qboolean skiplocal) noexcept
 {
+	if (gPlayerPosture.contains(pszWeaponModel))
+	{
+		szAnimExt = gPlayerPosture.at(pszWeaponModel).c_str();
+	}
+
+	if (gWorldModelSeq.contains(pszWeaponModel))
+	{
+		pWeapon->pev->sequence = gWorldModelSeq.at(pszWeaponModel);
+		pWeapon->pev->framerate = 1.f;
+		pWeapon->pev->animtime = gpGlobals->time;
+	}
+
+	// All P model string tests must come before this one.
 	if (gWorldModelRpl.contains(pszWeaponModel))
 	{
 		g_engfuncs.pfnSetModel(pWeapon->edict(), THE_BPW_MODEL);
@@ -158,9 +172,38 @@ void PrecacheModelInfo() noexcept
 		}
 	}
 
+	auto const pseq = (mstudioseqdesc_t*)((std::uintptr_t)pbuf + phdr->seqindex);
+	for (unsigned i = 0; i < phdr->numseq; ++i)
+	{
+		auto const& seq = pseq[i];
+		auto const rgszTexts = UTIL_Split(seq.label, "_");
+
+		if (rgszTexts.size() < 2)
+			continue;
+
+		// Drop the first one, it is for player sequence group.
+		for (auto&& szWeaponName : rgszTexts | std::views::drop(1))
+		{
+			gWorldModelSeq.try_emplace(
+				std::format("models/w_{}.mdl", szWeaponName),
+				i
+			);
+			auto const [it, bAdded] = gWorldModelSeq.try_emplace(
+				std::format("models/p_{}.mdl", szWeaponName),
+				i
+			);
+
+			// For all the following P model, the player anim group will be the one written in the first cell
+			gPlayerPosture.try_emplace(
+				it->first, std::string{ rgszTexts.front() }
+			);
+		}
+	}
+
 #ifdef _DEBUG
 	auto& ref1 = gWorldModelRpl;
-	auto& ref2 = gBackModelRpl;
+	auto& ref2 = gWorldModelSeq;
+	auto& ref3 = gBackModelRpl;
 #endif
 
 	delete[] pbuf;
