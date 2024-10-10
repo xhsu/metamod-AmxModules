@@ -11,6 +11,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MapEntityExt", "MapEntityEx
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ProjectPWB", "ProjectPWB\ProjectPWB.vcxproj", "{FFC4A559-360E-45DC-95CB-546858A7B269}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Pathfinder", "Pathfinder\Pathfinder.vcxproj", "{9B3863AD-5DEB-47C9-8059-8F86E307996B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -33,6 +35,10 @@ Global
 		{FFC4A559-360E-45DC-95CB-546858A7B269}.Debug|Win32.Build.0 = Debug|Win32
 		{FFC4A559-360E-45DC-95CB-546858A7B269}.Release|Win32.ActiveCfg = Release|Win32
 		{FFC4A559-360E-45DC-95CB-546858A7B269}.Release|Win32.Build.0 = Release|Win32
+		{9B3863AD-5DEB-47C9-8059-8F86E307996B}.Debug|Win32.ActiveCfg = Debug|Win32
+		{9B3863AD-5DEB-47C9-8059-8F86E307996B}.Debug|Win32.Build.0 = Debug|Win32
+		{9B3863AD-5DEB-47C9-8059-8F86E307996B}.Release|Win32.ActiveCfg = Release|Win32
+		{9B3863AD-5DEB-47C9-8059-8F86E307996B}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

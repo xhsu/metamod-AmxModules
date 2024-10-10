@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{9b3863ad-5deb-47c9-8059-8f86e307996b}</ProjectGuid>
+    <RootNamespace>Pathfinder</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\metamod-AirSupport\MetaMod-Debug.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\metamod-AirSupport\MetaMod-Release.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>C:\Program Files (x86)\Steam\steamapps\common\Half-Life\czero\addons\amxmodx\modules\</OutDir>
+    <TargetName>$(ProjectName)_amxx</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>C:\Program Files (x86)\Steam\steamapps\common\Half-Life\czero\addons\amxmodx\modules\</OutDir>
+    <TargetName>$(ProjectName)_amxx</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ModuleDefinitionFile>$(SolutionDir)export.def</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ModuleDefinitionFile>$(SolutionDir)export.def</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\Hydrogenium\UtlConcepts.ixx" />
+    <ClCompile Include="..\..\Hydrogenium\UtlHook.ixx" />
+    <ClCompile Include="..\..\Hydrogenium\UtlRandom.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\CBase.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ConsoleVar.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Engine.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\FileSystem.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Message.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Platform.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Prefab.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Query.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Task.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.Functions.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\VTFH.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.util.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\vector.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\hlsdk.customentity.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\hlsdk.decompiled.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\hlsdk.engine.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\hlsdk.ixx" />
+    <ClCompile Include="..\..\metamod-p\metamod\metamod_api.ixx" />
+    <ClCompile Include="..\Common\amxxmodule_api.ixx" />
+    <ClCompile Include="..\Common\UtlString.ixx" />
+    <ClCompile Include="..\Common\WinAPI.cpp" />
+    <ClCompile Include="..\Common\WinAPI.ixx" />
+    <ClCompile Include="DllFunctions.cpp" />
+    <ClCompile Include="Nav.Const.ixx" />
+    <ClCompile Include="Nav.ixx" />
+    <ClCompile Include="Pathfinder.cpp" />
+    <ClCompile Include="Pathfinder.ixx" />
+    <ClCompile Include="Plugin.cpp" />
+    <ClCompile Include="Plugin.ixx" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.hpp" />
+    <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.util.hpp" />
+    <ClInclude Include="..\..\metamod-p\hlsdk\dlls\vector.hpp" />
+    <ClInclude Include="..\..\metamod-p\hlsdk\engine\hlsdk.customentity.hpp" />
+    <ClInclude Include="..\..\metamod-p\hlsdk\engine\hlsdk.engine.hpp" />
+    <ClInclude Include="..\..\metamod-p\metamod\metamod_api.hpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
