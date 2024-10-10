@@ -22,25 +22,20 @@ qboolean __fastcall OrpheuF_DefaultDeploy(
 	const char* pszViewModel, const char* pszWeaponModel, int iAnim, const char* szAnimExt,
 	qboolean skiplocal) noexcept
 {
-	if (gPlayerPosture.contains(pszWeaponModel))
+	if (gRplInfo.contains(pszWeaponModel))
 	{
-		szAnimExt = gPlayerPosture.at(pszWeaponModel).c_str();
-	}
+		auto& info = gRplInfo.at(pszWeaponModel);
 
-	if (gWorldModelSeq.contains(pszWeaponModel))
-	{
-		pWeapon->pev->sequence = gWorldModelSeq.at(pszWeaponModel);
+		szAnimExt = info.m_posture.c_str();
+
+		pWeapon->pev->sequence = info.m_seq;
 		pWeapon->pev->framerate = 1.f;
 		pWeapon->pev->animtime = gpGlobals->time;
-	}
 
-	// All P model string tests must come before this one.
-	if (gWorldModelRpl.contains(pszWeaponModel))
-	{
-		g_engfuncs.pfnSetModel(pWeapon->edict(), THE_BPW_MODEL);
+		g_engfuncs.pfnSetModel(pWeapon->edict(), info.m_model.c_str());
 
 		pWeapon->pev->effects = 0;
-		pWeapon->pev->body = gWorldModelRpl.at(pszWeaponModel);
+		pWeapon->pev->body = info.m_body;
 		pWeapon->pev->aiment = pWeapon->m_pPlayer->edict();
 		pWeapon->pev->movetype = MOVETYPE_FOLLOW;
 
@@ -56,11 +51,12 @@ void __fastcall HamF_Item_Holster(CBasePlayerItem* pWeapon, std::uintptr_t edx, 
 {
 	std::string_view const szClassName{ STRING(pWeapon->pev->classname) };
 	gOrgHolsterFn[szClassName](pWeapon, edx, skiplocal);
+	auto& info = gBackModelRpl.at(szClassName);
 
-	g_engfuncs.pfnSetModel(pWeapon->edict(), THE_BPW_MODEL);
+	g_engfuncs.pfnSetModel(pWeapon->edict(), info.m_model.c_str());
 
 	pWeapon->pev->effects = 0;
-	pWeapon->pev->body = gBackModelRpl.at(szClassName);
+	pWeapon->pev->body = info.m_body;
 	pWeapon->pev->aiment = pWeapon->m_pPlayer->edict();
 	pWeapon->pev->movetype = MOVETYPE_FOLLOW;
 
@@ -68,44 +64,9 @@ void __fastcall HamF_Item_Holster(CBasePlayerItem* pWeapon, std::uintptr_t edx, 
 	// check CWeaponBox::PackWeapon().
 }
 
-inline constexpr std::string_view WEAPON_CLASSNAMES[] =
+static void ReadModelInfo(std::string_view szModel) noexcept
 {
-	"",
-	"weapon_p228",
-	"",
-	"weapon_scout",
-	"weapon_hegrenade",
-	"weapon_xm1014",
-	"weapon_c4",
-	"weapon_mac10",
-	"weapon_aug",
-	"weapon_smokegrenade",
-	"weapon_elite",
-	"weapon_fiveseven",
-	"weapon_ump45",
-	"weapon_sg550",
-	"weapon_galil",
-	"weapon_famas",
-	"weapon_usp",
-	"weapon_glock18",
-	"weapon_awp",
-	"weapon_mp5navy",
-	"weapon_m249",
-	"weapon_m3",
-	"weapon_m4a1",
-	"weapon_tmp",
-	"weapon_g3sg1",
-	"weapon_flashbang",
-	"weapon_deagle",
-	"weapon_sg552",
-	"weapon_ak47",
-	"weapon_knife",
-	"weapon_p90"
-};
-
-void PrecacheModelInfo() noexcept
-{
-	auto f = FileSystem::StandardOpen(THE_BPW_MODEL, "rb");
+	auto f = FileSystem::StandardOpen(szModel.data(), "rb");
 	if (!f)
 		return;
 
@@ -146,13 +107,13 @@ void PrecacheModelInfo() noexcept
 
 			if (szGroupName.starts_with('p') && szGroupName.contains("_weapon"))
 			{
-				gWorldModelRpl.try_emplace(
+				gRplInfo.try_emplace(
 					std::format("models/w_{}.mdl", szWeaponName),
-					UTIL_CalcBody(gModelMeshGroupsInfo)
+					rpl_info_t{ .m_body{UTIL_CalcBody(gModelMeshGroupsInfo)}, .m_model{szModel}, .m_posture{}, .m_seq{}, }
 				);
-				gWorldModelRpl.try_emplace(
+				gRplInfo.try_emplace(
 					std::format("models/p_{}.mdl", szWeaponName),
-					UTIL_CalcBody(gModelMeshGroupsInfo)
+					rpl_info_t{ .m_body{UTIL_CalcBody(gModelMeshGroupsInfo)}, .m_model{szModel}, .m_posture{}, .m_seq{}, }
 				);
 			}
 			else if (szGroupName.starts_with('b') && szGroupName.contains("_weapon"))
@@ -164,7 +125,7 @@ void PrecacheModelInfo() noexcept
 
 					gBackModelRpl.try_emplace(
 						szClass,
-						UTIL_CalcBody(gModelMeshGroupsInfo)
+						bmdl_info_t{ .m_body{UTIL_CalcBody(gModelMeshGroupsInfo)}, .m_model{szModel} }
 					);
 					break;
 				}
@@ -184,30 +145,43 @@ void PrecacheModelInfo() noexcept
 		// Drop the first one, it is for player sequence group.
 		for (auto&& szWeaponName : rgszTexts | std::views::drop(1))
 		{
-			gWorldModelSeq.try_emplace(
-				std::format("models/w_{}.mdl", szWeaponName),
-				i
-			);
-			auto const [it, bAdded] = gWorldModelSeq.try_emplace(
-				std::format("models/p_{}.mdl", szWeaponName),
-				i
-			);
+			auto const itWMDL = gRplInfo.find(std::format("models/w_{}.mdl", szWeaponName));
+			auto const itPMDL = gRplInfo.find(std::format("models/p_{}.mdl", szWeaponName));
 
 			// For all the following P model, the player anim group will be the one written in the first cell
-			gPlayerPosture.try_emplace(
-				it->first, std::string{ rgszTexts.front() }
-			);
+			if (itWMDL != gRplInfo.end())
+			{
+				itWMDL->second.m_posture = std::string{ rgszTexts.front() };
+				itWMDL->second.m_seq = i;
+			}
+			if (itPMDL != gRplInfo.end())
+			{
+				itPMDL->second.m_posture = std::string{ rgszTexts.front() };
+				itPMDL->second.m_seq = i;
+			}
 		}
 	}
 
 #ifdef _DEBUG
-	auto& ref1 = gWorldModelRpl;
-	auto& ref2 = gWorldModelSeq;
+	auto& ref1 = gRplInfo;
 	auto& ref3 = gBackModelRpl;
 #endif
 
 	delete[] pbuf;
 	fclose(f);
+}
+
+void ListPwbModels() noexcept
+{
+	auto& fs = FileSystem::m_pObject;
+	std::string szPath{};
+
+	for (int i = 0; i < 100; ++i)
+	{
+		szPath = std::format("models/bpw_0{:0>2}.mdl", i);
+		if (fs->FileExists(szPath.c_str()))
+			ReadModelInfo(szPath);
+	}
 }
 
 void DeployVftInjection(void) noexcept

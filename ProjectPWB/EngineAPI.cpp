@@ -16,10 +16,10 @@ auto fw_PrecacheModel(const char* psz) noexcept -> int
 	gpMetaGlobals->mres = MRES_IGNORED;
 	// pre
 
-	if (gWorldModelRpl.contains(psz))
+	if (gRplInfo.contains(psz))
 	{
 		gpMetaGlobals->mres = MRES_SUPERCEDE;
-		return g_engfuncs.pfnPrecacheModel(THE_BPW_MODEL);
+		return g_engfuncs.pfnPrecacheModel(gRplInfo.at(psz).m_model.c_str());
 	}
 
 	return -1;
@@ -30,18 +30,18 @@ void fw_SetModel(edict_t* pEdict, const char* pszModel) noexcept
 	gpMetaGlobals->mres = MRES_IGNORED;
 	// pre
 
-	if (gWorldModelRpl.contains(pszModel))
+	if (gRplInfo.contains(pszModel))
 	{
-		gpMetaGlobals->mres = MRES_SUPERCEDE;
-		g_engfuncs.pfnSetModel(pEdict, THE_BPW_MODEL);
-		pEdict->v.body = gWorldModelRpl.at(pszModel);
+		auto& info = gRplInfo.at(pszModel);
 
-		if (gWorldModelSeq.contains(pszModel))
-		{
-			pEdict->v.sequence = gWorldModelSeq.at(pszModel);
-			pEdict->v.framerate = 1.f;
-			pEdict->v.animtime = gpGlobals->time;
-		}
+		gpMetaGlobals->mres = MRES_SUPERCEDE;
+		g_engfuncs.pfnSetModel(pEdict, info.m_model.c_str());
+		pEdict->v.body = info.m_body;
+
+
+		pEdict->v.sequence = info.m_seq;
+		pEdict->v.framerate = 1.f;
+		pEdict->v.animtime = gpGlobals->time;
 
 		// The followings are weaponbox phys
 
@@ -68,10 +68,10 @@ auto fw_ModelIndex(const char* pszModel) noexcept -> int
 	gpMetaGlobals->mres = MRES_IGNORED;
 	// pre
 
-	if (gWorldModelRpl.contains(pszModel))
+	if (gRplInfo.contains(pszModel))
 	{
 		gpMetaGlobals->mres = MRES_SUPERCEDE;
-		return g_engfuncs.pfnModelIndex(THE_BPW_MODEL);
+		return g_engfuncs.pfnModelIndex(gRplInfo.at(pszModel).m_model.c_str());
 	}
 
 	return -1;

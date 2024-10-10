@@ -55,7 +55,11 @@ static void __fastcall HamF_Touch(CWeaponBox* pThis, std::uintptr_t edx, CBaseEn
 				static constexpr Vector VEC_ALMOST_RIGHT{ 0.99999946, 0, 0.0010010005 };	// #UPDATE_AT_CPP26 constexpr math expanded
 				auto qRot = Quaternion::Identity();
 
-				pev->armorvalue += UTIL_Random(pThis->m_flReleaseThrow / 2.f, pThis->m_flReleaseThrow);
+				// After div by 2, neg number actually becomes larger.
+				if (pThis->m_flReleaseThrow <= 0)
+					pev->armorvalue += UTIL_Random(pThis->m_flReleaseThrow, pThis->m_flReleaseThrow / 2.f);
+				else
+					pev->armorvalue += UTIL_Random(pThis->m_flReleaseThrow / 2.f, pThis->m_flReleaseThrow);
 				if (pev->armorvalue > 360.f)
 					pev->armorvalue -= 360.f;
 

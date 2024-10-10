@@ -20,7 +20,7 @@ void fw_GameInit_Post() noexcept
 
 	Uranus::RetrieveUranusLocal();
 	FileSystem::Init();
-	PrecacheModelInfo();	// not actually precaching. Must behind filesystem.
+	ListPwbModels();	// not actually precaching. Must behind filesystem.
 }
 
 auto fw_Spawn_Post(edict_t* pEdict) noexcept -> qboolean
@@ -31,6 +31,9 @@ auto fw_Spawn_Post(edict_t* pEdict) noexcept -> qboolean
 
 	g_engfuncs.pfnPrecacheSound(WEAPONBOX_SFX_DROP);
 	g_engfuncs.pfnPrecacheSound(WEAPONBOX_SFX_HIT);
+
+	for (auto&& [szClass, info] : gBackModelRpl)
+		g_engfuncs.pfnPrecacheModel(info.m_model.c_str());
 
 	g_bShouldPrecache = false;
 	return 0;
@@ -86,6 +89,28 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 		{
 			if (pTarget->m_rgpPlayerItems[iSlot] != nullptr)
 				Uranus::BasePlayer::SelectItem{}(pTarget, STRING(pTarget->m_rgpPlayerItems[iSlot]->pev->classname));
+		}
+
+		return MRES_SUPERCEDE;
+	}
+	else if (szCmd == "drop_it")
+	{
+		auto const vecSrc = pPlayer->pev->origin + pPlayer->pev->view_ofs;
+		auto const vecEnd = vecSrc + pPlayer->pev->v_angle.Front() * 8192.0;
+
+		TraceResult tr{};
+		g_engfuncs.pfnTraceLine(vecSrc, vecEnd, dont_ignore_glass | dont_ignore_monsters, pPlayer->edict(), &tr);
+
+		if (pev_valid(tr.pHit) != EValidity::Full)
+			return MRES_SUPERCEDE;
+
+		EHANDLE<CBaseEntity> pEnt{ tr.pHit };
+		if (auto const pTarget = pEnt.As<CBasePlayer>())
+		{
+			Uranus::BasePlayer::DropPlayerItem{}(
+				pTarget,
+				STRING(pTarget->m_pActiveItem->pev->classname)
+				);
 		}
 
 		return MRES_SUPERCEDE;
