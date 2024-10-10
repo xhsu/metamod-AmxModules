@@ -28,8 +28,10 @@ $eyeposition 0.000000 0.000000 0.000000
 $bodygroup "pw_weapons"
 {
 blank
-studio "p_usp"
-studio "p_awp"
+studio "pw_usp"
+studio "pw_awp"
+studio "pw_ak47"
+studio "pw_galil"
 }
 
 $bodygroup "b_weapons"
@@ -37,10 +39,14 @@ $bodygroup "b_weapons"
 blank
 studio "b_usp"
 studio "b_awp"
+studio "b_ak47"
+studio "b_galil"
 }
 
 // 1 animation sequence(s)
 $sequence "onehanded_usp" "onehanded_usp" fps 30 
 $sequence "rifle_awp" "rifle_awp" fps 30 
+$sequence "ak47_ak47" "ak47_ak47" fps 30 
+$sequence "ak47_galill" "ak47_galill" fps 30 
 
 // End of QC script.
