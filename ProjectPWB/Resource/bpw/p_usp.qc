@@ -25,28 +25,41 @@ $eyeposition 0.000000 0.000000 0.000000
 
 
 //reference mesh(es)
-$bodygroup "pw_weapons"
+$bodygroup "bpw_weapons"
 {
 blank
 studio "pw_usp"
-studio "pw_awp"
 studio "pw_ak47"
 studio "pw_galil"
-}
-
-$bodygroup "b_weapons"
-{
-blank
+studio "pw_scout"
+studio "pw_sg550"
+studio "pw_m4a1"
+studio "pw_awp"
+studio "pw_m249"
+studio "pw_sg552"
+studio "pw_m3"
 studio "b_usp"
-studio "b_awp"
 studio "b_ak47"
 studio "b_galil"
+studio "b_scout"
+studio "b_sg550"
+studio "b_m4a1"
+studio "b_awp"
+studio "b_m249"
+studio "b_sg552"
+studio "b_m3"
 }
 
 // 1 animation sequence(s)
 $sequence "onehanded_usp" "onehanded_usp" fps 30 
-$sequence "rifle_awp" "rifle_awp" fps 30 
 $sequence "ak47_ak47" "ak47_ak47" fps 30 
 $sequence "ak47_galil" "ak47_galil" fps 30 
+$sequence "rifle_scout" "rifle_scout" fps 30 
+$sequence "rifle_sg550" "rifle_sg550" fps 30 
+$sequence "rifle_m4a1" "rifle_m4a1" fps 30 
+$sequence "rifle_awp" "rifle_awp" fps 30 
+$sequence "m249_m249" "m249_m249" fps 30 
+$sequence "mp5_sg552" "mp5_sg552" fps 30 
+$sequence "shotgun_m3" "shotgun_m3" fps 30 
 
 // End of QC script.
