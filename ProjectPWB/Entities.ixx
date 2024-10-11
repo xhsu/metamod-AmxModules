@@ -13,6 +13,8 @@ extern "C++" void DeployWeaponBoxHook() noexcept;
 export inline constexpr char WEAPONBOX_SFX_HIT[] = "debris/metal6.wav";
 export inline constexpr char WEAPONBOX_SFX_DROP[] = "items/weapondrop1.wav";
 
+export inline std::set<CWeaponBox*, std::less<>> gWpnBoxCheck{};
+
 export void Materialization(entvars_t* pev) noexcept
 {
 	pev->friction = (float)cvar_friction;

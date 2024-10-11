@@ -40,6 +40,9 @@ qboolean __fastcall OrpheuF_DefaultDeploy(
 		pWeapon->pev->movetype = MOVETYPE_FOLLOW;
 
 		pszWeaponModel = "";
+
+//		g_engfuncs.pfnServerPrint(std::format("fw_AddToFullPack_Post: {}\n", gpGlobals->time).c_str());
+		gWpnDeployCheck.emplace(pWeapon);
 	}
 
 	return HookInfo::DefaultDeploy(pWeapon, edx, pszViewModel, pszWeaponModel, iAnim, szAnimExt, skiplocal);
@@ -59,6 +62,8 @@ void __fastcall HamF_Item_Holster(CBasePlayerItem* pWeapon, std::uintptr_t edx, 
 	pWeapon->pev->body = info.m_body;
 	pWeapon->pev->aiment = pWeapon->m_pPlayer->edict();
 	pWeapon->pev->movetype = MOVETYPE_FOLLOW;
+
+	gWpnHolsterCheck.emplace(pWeapon);
 
 	// If this weapon is being dropped, these values will soon being reset.
 	// check CWeaponBox::PackWeapon().
@@ -103,20 +108,14 @@ static void ReadModelInfo(std::string_view szModel) noexcept
 
 			gModelMeshGroupsInfo[i].m_index = j;
 			std::string_view const szGroupName{ bps.name };
+			std::string_view const szConfig{ szMeshName.substr(0, pos) };	// format: [b][p][w]_classname
 			std::string_view const szWeaponName{ szMeshName.substr(pos + 1) };
 
-			if (szGroupName.starts_with('p') && szGroupName.contains("_weapon"))
-			{
-				gRplInfo.try_emplace(
-					std::format("models/w_{}.mdl", szWeaponName),
-					rpl_info_t{ .m_body{UTIL_CalcBody(gModelMeshGroupsInfo)}, .m_model{szModel}, .m_posture{}, .m_seq{}, }
-				);
-				gRplInfo.try_emplace(
-					std::format("models/p_{}.mdl", szWeaponName),
-					rpl_info_t{ .m_body{UTIL_CalcBody(gModelMeshGroupsInfo)}, .m_model{szModel}, .m_posture{}, .m_seq{}, }
-				);
-			}
-			else if (szGroupName.starts_with('b') && szGroupName.contains("_weapon"))
+			// The group itself must be named _weapon or some sort.
+			if (!szGroupName.contains("_weapon"))
+				continue;
+
+			if (szConfig.contains('b'))
 			{
 				for (auto&& szClass : WEAPON_CLASSNAMES)
 				{
@@ -129,6 +128,20 @@ static void ReadModelInfo(std::string_view szModel) noexcept
 					);
 					break;
 				}
+			}
+			if (szConfig.contains('p'))
+			{
+				gRplInfo.try_emplace(
+					std::format("models/p_{}.mdl", szWeaponName),
+					rpl_info_t{ .m_body{UTIL_CalcBody(gModelMeshGroupsInfo)}, .m_model{szModel}, .m_posture{}, .m_seq{}, }
+				);
+			}
+			if (szConfig.contains('w'))
+			{
+				gRplInfo.try_emplace(
+					std::format("models/w_{}.mdl", szWeaponName),
+					rpl_info_t{ .m_body{UTIL_CalcBody(gModelMeshGroupsInfo)}, .m_model{szModel}, .m_posture{}, .m_seq{}, }
+				);
 			}
 		}
 	}

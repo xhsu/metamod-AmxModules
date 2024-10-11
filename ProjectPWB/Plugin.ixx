@@ -15,7 +15,7 @@ export inline constexpr plugin_info_t gPluginInfo =
 {
 	.ifvers		= META_INTERFACE_VERSION,
 	.name		= "P, W & B",
-	.version	= "2.0.0",
+	.version	= "2.1.0",
 	.date		= __DATE__,
 	.author		= "xhsu",
 	.url		= "http://www.metamod.org/",

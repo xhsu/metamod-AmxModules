@@ -270,6 +270,79 @@ META_RES fw_PlayerPostThink(edict_t*) noexcept
 	return MRES_HANDLED;
 }
 
+// These are for model display, not with weaponphys.
+// The purpose is for modded weapons.
+auto fw_AddToFullPack(entity_state_t* pState, int iEntIndex, edict_t* pEdict, edict_t* pClientSendTo, qboolean cl_lw, qboolean bIsPlayer, unsigned char* pSet) noexcept -> std::pair<qboolean, META_RES>
+{
+	// Kinda dangerous, we are not checking types here.
+	if (auto const pWeapon = ent_cast<CBasePlayerWeapon*>(pEdict); gWpnDeployCheck.contains(pWeapon))
+	{
+		if (pWeapon->m_pPlayer)
+		{
+			std::string_view const PMDL{ STRING(pWeapon->m_pPlayer->pev->weaponmodel) };
+
+			// Same as what we did in Deploy()
+			if (auto const it = gRplInfo.find(PMDL); it != gRplInfo.end())
+			{
+				auto& info = it->second;
+
+				std::strncpy(
+					pWeapon->m_pPlayer->m_szAnimExtention,
+					info.m_posture.c_str(),
+					sizeof(pWeapon->m_pPlayer->m_szAnimExtention)
+				);
+
+				pWeapon->pev->sequence = info.m_seq;
+				pWeapon->pev->framerate = 1.f;
+				pWeapon->pev->animtime = gpGlobals->time;
+
+				g_engfuncs.pfnSetModel(pWeapon->edict(), info.m_model.c_str());
+
+				pWeapon->pev->effects = 0;
+				pWeapon->pev->body = info.m_body;
+				pWeapon->pev->aiment = pWeapon->m_pPlayer->edict();
+				pWeapon->pev->movetype = MOVETYPE_FOLLOW;
+
+				pWeapon->m_pPlayer->pev->weaponmodel = 0;
+			}
+		}
+
+//		g_engfuncs.pfnServerPrint(std::format("fw_AddToFullPack_Post: {}\n", gpGlobals->time).c_str());
+		gWpnDeployCheck.erase(pWeapon);
+	}
+
+	if (auto const pWeapon = ent_cast<CBasePlayerItem*>(pEdict); gWpnHolsterCheck.contains(pWeapon))
+	{
+		// don't know how to set B model for custom weapons.
+
+//		g_engfuncs.pfnServerPrint(std::format("fw_AddToFullPack_Post: {}\n", gpGlobals->time).c_str());
+		gWpnHolsterCheck.erase(pWeapon);
+	}
+
+	if (auto const pWpnBox = ent_cast<CWeaponBox*>(pEdict); gWpnBoxCheck.contains(pWpnBox))
+	{
+		std::string_view const WMDL{ STRING(pWpnBox->pev->model) };
+
+		// Same as we did in SetModel()
+		if (auto const it = gRplInfo.find(WMDL); it != gRplInfo.end())
+		{
+			auto& info = it->second;
+
+			g_engfuncs.pfnSetModel(pEdict, info.m_model.c_str());
+			pEdict->v.body = info.m_body;
+
+			pEdict->v.sequence = info.m_seq;
+			pEdict->v.framerate = 1.f;
+			pEdict->v.animtime = gpGlobals->time;
+		}
+
+//		g_engfuncs.pfnServerPrint(std::format("fw_AddToFullPack_Post: {}\n", gpGlobals->time).c_str());
+		gWpnBoxCheck.erase(pWpnBox);
+	}
+
+	return { true, MRES_HANDLED };
+}
+
 qboolean fw_AddToFullPack_Post(entity_state_t* pState, int iEntIndex, edict_t* pEdict, edict_t* pClientSendTo, qboolean cl_lw, qboolean bIsPlayer, unsigned char* pSet) noexcept
 {
 	gpMetaGlobals->mres = MRES_IGNORED;
@@ -279,6 +352,7 @@ qboolean fw_AddToFullPack_Post(entity_state_t* pState, int iEntIndex, edict_t* p
 	{
 		pState->solid = SOLID_NOT;
 	}
+
 
 	return false;
 }

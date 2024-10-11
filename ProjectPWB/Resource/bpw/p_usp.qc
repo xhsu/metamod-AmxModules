@@ -47,6 +47,6 @@ studio "b_galil"
 $sequence "onehanded_usp" "onehanded_usp" fps 30 
 $sequence "rifle_awp" "rifle_awp" fps 30 
 $sequence "ak47_ak47" "ak47_ak47" fps 30 
-$sequence "ak47_galill" "ak47_galill" fps 30 
+$sequence "ak47_galil" "ak47_galil" fps 30 
 
 // End of QC script.

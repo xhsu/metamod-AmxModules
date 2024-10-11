@@ -18,6 +18,7 @@ extern void fw_ServerDeactivate_Post() noexcept;
 extern META_RES fw_PM_Move(playermove_t* ppmove, qboolean server) noexcept;
 extern void fw_PM_Move_Post(playermove_t* ppmove, qboolean server) noexcept;
 extern META_RES fw_PlayerPostThink(edict_t*) noexcept;
+extern auto fw_AddToFullPack(entity_state_t* pState, int iEntIndex, edict_t* pEdict, edict_t* pClientSendTo, qboolean cl_lw, qboolean bIsPlayer, unsigned char* pSet) noexcept -> std::pair<qboolean, META_RES>;
 extern qboolean fw_AddToFullPack_Post(entity_state_t* pState, int iEntIndex, edict_t* pEdict, edict_t* pClientSendTo, qboolean cl_lw, qboolean bIsPlayer, unsigned char* pSet) noexcept;
 //
 
@@ -89,7 +90,7 @@ static int HookGameDLLExportedFn(DLL_FUNCTIONS *pFunctionTable, int *interfaceVe
 
 		.pfnSetupVisibility	= nullptr,
 		.pfnUpdateClientData= nullptr,
-		.pfnAddToFullPack	= nullptr,
+		.pfnAddToFullPack	= [](entity_state_t* a, int b, edict_t* c, edict_t* d, qboolean e, qboolean f, unsigned char* g) noexcept -> qboolean { auto [ret, mres] = fw_AddToFullPack(a, b, c, d, e, f, g); gpMetaGlobals->mres = mres; return ret; },
 		.pfnCreateBaseline	= nullptr,
 		.pfnRegisterEncoders= nullptr,
 		.pfnGetWeaponData	= nullptr,

@@ -43,6 +43,8 @@ void fw_SetModel(edict_t* pEdict, const char* pszModel) noexcept
 		pEdict->v.framerate = 1.f;
 		pEdict->v.animtime = gpGlobals->time;
 
+		gWpnBoxCheck.emplace(ent_cast<CWeaponBox*>(pEdict));
+
 		// The followings are weaponbox phys
 
 		Materialization(&pEdict->v);

@@ -64,6 +64,9 @@ export inline std::vector<BodyEnumInfo_t> gModelMeshGroupsInfo{};
 export inline std::map<std::string, rpl_info_t, sv_iless_t> gRplInfo{};	// KEY<model_path>
 export inline std::map<std::string_view, bmdl_info_t, std::less<>> gBackModelRpl{};	// KEY<classname>
 
+export inline std::set<CBasePlayerWeapon*, std::less<>> gWpnDeployCheck{};
+export inline std::set<CBasePlayerItem*, std::less<>> gWpnHolsterCheck{};
+
 export inline constexpr std::size_t VFTIDX_ITEM_HOLSTER = 67;
 
 extern "C++" qboolean __fastcall OrpheuF_DefaultDeploy(CBasePlayerWeapon* pWeapon, std::uintptr_t, const char* szViewModel, const char* szWeaponModel, int iAnim, const char* szAnimExt, qboolean skiplocal) noexcept;
