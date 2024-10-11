@@ -2,6 +2,8 @@ import std;
 import hlsdk;
 
 import CBase;
+import ConsoleVar;
+import LocalNav;
 import Nav;
 import Pathfinder;
 import Plugin;
@@ -90,9 +92,34 @@ Task Task_ShowLadders() noexcept
 	co_return;
 }
 
+Task Task_ShowLN(std::span<Vector> rgvec, Vector vecSrc) noexcept
+{
+	for (;;)
+	{
+		if (rgvec.size() == 1)
+		{
+			UTIL_DrawBeamPoints(vecSrc, rgvec[0], 9, 255, 255, 255);
+		}
+		else
+		{
+			for (auto i = 1u; i < rgvec.size(); ++i)
+			{
+				UTIL_DrawBeamPoints(rgvec[i - 1], rgvec[i], 9, 255, 255, 255);
+				co_await 0.01f;
+			}
+		}
+
+		co_await 0.1f;
+	}
+
+	co_return;
+}
+
 void fw_GameInit_Post() noexcept
 {
+	CVarManager::Init();
 
+	TaskScheduler::Enroll(CLocalNav::Task_LocalNav());
 }
 
 auto fw_Spawn_Post(edict_t* pEdict) noexcept -> qboolean
@@ -109,6 +136,8 @@ auto fw_Spawn_Post(edict_t* pEdict) noexcept -> qboolean
 
 META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 {
+	static Vector vecTarget{};
+
 	if (szCmd == "pf_load")
 	{
 		auto const ret = LoadNavigationMap();
@@ -117,20 +146,14 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 
 		return MRES_SUPERCEDE;
 	}
-	else if (szCmd == "pf_set")
+	else if (szCmd == "pf_run")
 	{
 		static Pathfinder PF{};
 		PF.pev = pPlayer->pev;
 		PF.m_lastKnownArea = TheNavAreaGrid.GetNavArea(&pPlayer->pev->origin);
 		PF.m_areaEnteredTimestamp = gpGlobals->time;
 
-		auto const vecSrc = pPlayer->pev->origin + pPlayer->pev->view_ofs;
-		auto const vecEnd = vecSrc + pPlayer->pev->v_angle.Front() * 8192.0;
-
-		TraceResult tr{};
-		g_engfuncs.pfnTraceLine(vecSrc, vecEnd, dont_ignore_glass | dont_ignore_monsters, pPlayer->edict(), &tr);
-
-		if (PF.ComputePath(TheNavAreaGrid.GetNavArea(&tr.vecEndPos), &tr.vecEndPos, FASTEST_ROUTE))
+		if (PF.ComputePath(TheNavAreaGrid.GetNavArea(&vecTarget), &vecTarget, FASTEST_ROUTE))
 		{
 			for (size_t i = 1; i < PF.m_pathLength; ++i)
 			{
@@ -155,6 +178,47 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 	else if (szCmd == "pf_ladders")
 	{
 		TaskScheduler::Enroll(Task_ShowLadders(), (1 << 0), true);
+		return MRES_SUPERCEDE;
+	}
+
+	else if (szCmd == "pf_set")
+	{
+		auto const vecSrc = pPlayer->pev->origin + pPlayer->pev->view_ofs;
+		auto const vecEnd = vecSrc + pPlayer->pev->v_angle.Front() * 8192.0;
+
+		TraceResult tr{};
+		g_engfuncs.pfnTraceLine(vecSrc, vecEnd, dont_ignore_glass | dont_ignore_monsters, pPlayer->edict(), &tr);
+
+		vecTarget = tr.vecEndPos;
+
+		return MRES_SUPERCEDE;
+	}
+
+	// Local NAV
+	else if (szCmd == "pf_ln")
+	{
+		static CLocalNav LocalNav{ pPlayer };
+		static std::vector<Vector> Nodes{};
+
+		if (auto const fl = (pPlayer->pev->origin - vecTarget).Length(); fl > 1000)
+		{
+			g_engfuncs.pfnServerPrint(std::format("Too far! ({:.1f})\n", fl).c_str());
+			return MRES_SUPERCEDE;
+		}
+
+		node_index_t nindexPath = LocalNav.FindPath(pPlayer->pev->origin, vecTarget, 40, ignore_monsters | dont_ignore_glass);
+		if (nindexPath == NODE_INVALID_EMPTY)
+		{
+			g_engfuncs.pfnServerPrint(std::format("Path no found!\n").c_str());
+		}
+		else
+		{
+			LocalNav.SetupPathNodes(nindexPath, &Nodes);
+			auto const m_nTargetNode = LocalNav.GetFurthestTraversableNode(pPlayer->pev->origin, &Nodes, ignore_monsters | dont_ignore_glass);
+			g_engfuncs.pfnServerPrint(std::format("m_nTargetNode == {}\n", m_nTargetNode).c_str());
+			TaskScheduler::Enroll(Task_ShowLN(Nodes, pPlayer->pev->origin), (1 << 0), true);
+		}
+
 		return MRES_SUPERCEDE;
 	}
 

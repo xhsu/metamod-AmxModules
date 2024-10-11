@@ -120,6 +120,9 @@
     <ClCompile Include="Pathfinder.ixx">
       <Filter>Sources</Filter>
     </ClCompile>
+    <ClCompile Include="LocalNav.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.hpp">
