@@ -4,6 +4,7 @@ import hlsdk;
 import CBase;
 import ConsoleVar;
 import LocalNav;
+import MonsterNav;
 import Nav;
 import Pathfinder;
 import Plugin;
@@ -38,7 +39,7 @@ inline void UTIL_DrawBeamPoints(Vector const& vecStart, Vector const& vecEnd,
 	g_engfuncs.pfnMessageEnd();
 }
 
-Task Task_ShowPathfinder(Pathfinder& PF) noexcept
+Task Task_ShowPathfinder(Pathfinder const& PF) noexcept
 {
 	for (;;)
 	{
@@ -92,21 +93,41 @@ Task Task_ShowLadders() noexcept
 	co_return;
 }
 
-Task Task_ShowLN(std::span<Vector> rgvec, Vector vecSrc) noexcept
+Task Task_ShowLN(std::span<Vector> rgvec, Vector const vecSrc) noexcept
 {
 	for (;;)
 	{
-		if (rgvec.size() == 1)
+		UTIL_DrawBeamPoints(vecSrc, rgvec.back(), 9, 255, 255, 255);
+
+		co_await 0.01f;
+
+		for (auto i = 1u; i < rgvec.size(); ++i)
 		{
-			UTIL_DrawBeamPoints(vecSrc, rgvec[0], 9, 255, 255, 255);
+			UTIL_DrawBeamPoints(rgvec[i - 1], rgvec[i], 9, 255, 255, 255);
+			co_await 0.01f;
 		}
-		else
+
+		co_await 0.1f;
+	}
+
+	co_return;
+}
+
+Task Task_ShowMN(MonsterNav const& MN, Vector const vecSrc) noexcept
+{
+	for (;;)
+	{
+		UTIL_DrawBeamPoints(vecSrc, MN.m_Route[MN.m_iRouteIndex].vecLocation, 9, 255, 255, 255);
+
+		co_await 0.01f;
+
+		for (auto i = MN.m_iRouteIndex + 1; i < std::ssize(MN.m_Route); ++i)
 		{
-			for (auto i = 1u; i < rgvec.size(); ++i)
-			{
-				UTIL_DrawBeamPoints(rgvec[i - 1], rgvec[i], 9, 255, 255, 255);
-				co_await 0.01f;
-			}
+			if (MN.m_Route[i].iType == 0)
+				break;
+
+			UTIL_DrawBeamPoints(MN.m_Route[i - 1].vecLocation, MN.m_Route[i - 1].vecLocation, 9, 255, 255, 255);
+			co_await 0.01f;
 		}
 
 		co_await 0.1f;
@@ -216,8 +237,26 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 			LocalNav.SetupPathNodes(nindexPath, &Nodes);
 			auto const m_nTargetNode = LocalNav.GetFurthestTraversableNode(pPlayer->pev->origin, &Nodes, ignore_monsters | dont_ignore_glass);
 			g_engfuncs.pfnServerPrint(std::format("m_nTargetNode == {}\n", m_nTargetNode).c_str());
-			TaskScheduler::Enroll(Task_ShowLN(Nodes, pPlayer->pev->origin), (1 << 0), true);
+			TaskScheduler::Enroll(Task_ShowLN({ Nodes.begin(), Nodes.begin() + m_nTargetNode + 1 }, pPlayer->pev->origin), (1 << 0), true);
+			//TaskScheduler::Enroll(Task_ShowLN(Nodes, pPlayer->pev->origin), (1 << 0), true);
 		}
+
+		return MRES_SUPERCEDE;
+	}
+
+	// Monster NAV
+	else if (szCmd == "pf_mn")
+	{
+		static MonsterNav MN{
+			.pev = pPlayer->pev,
+		};
+
+		if (MN.BuildRoute(vecTarget, bits_MF_TO_LOCATION, nullptr))
+		{
+			TaskScheduler::Enroll(Task_ShowMN(MN, pPlayer->pev->origin), (1 << 0), true);
+		}
+		else
+			g_engfuncs.pfnServerPrint("No path found!\n");
 
 		return MRES_SUPERCEDE;
 	}
