@@ -53,7 +53,10 @@ inline std::map<std::string_view, void(__fastcall*)(CBasePlayerItem*, std::uintp
 void __fastcall HamF_Item_Holster(CBasePlayerItem* pWeapon, std::uintptr_t edx, qboolean skiplocal) noexcept
 {
 	std::string_view const szClassName{ STRING(pWeapon->pev->classname) };
-	gOrgHolsterFn[szClassName](pWeapon, edx, skiplocal);
+	if (!gOrgHolsterFn.contains(szClassName))
+		return;	// Why are we here then?
+
+	gOrgHolsterFn.at(szClassName)(pWeapon, edx, skiplocal);
 	auto& info = gBackModelRpl.at(szClassName);
 
 	g_engfuncs.pfnSetModel(pWeapon->edict(), info.m_model.c_str());
