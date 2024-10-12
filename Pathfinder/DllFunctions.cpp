@@ -4,6 +4,7 @@ import hlsdk;
 import CBase;
 import ConsoleVar;
 import Plugin;
+import Query;
 import Task;
 
 import Improvisational;	// CZ Hostage
@@ -264,6 +265,157 @@ Task Task_ShowMN(MonsterNav const& MN, Vector const vecSrc) noexcept
 	co_return;
 }
 
+enum GameScenarioType
+{
+	SCENARIO_DEATHMATCH,
+	SCENARIO_DEFUSE_BOMB,
+	SCENARIO_RESCUE_HOSTAGES,
+	SCENARIO_ESCORT_VIP,
+	SCENARIO_ESCAPE
+};
+
+Task Task_Cheat_FindGameTarget(CBasePlayer* pPlayer) noexcept
+{
+	CNavPath np{};
+	TraceResult tr{};
+
+	if (LoadNavigationMap() != NAV_OK)
+		g_engfuncs.pfnServerPrint("[PF] NAV loading error.\n");
+
+	co_await 0.1f;
+
+	GameScenarioType iGameScenario{ SCENARIO_DEATHMATCH };
+
+	for (CBaseEntity* pEntity : Query::all_nonplayer_entities())
+	{
+		if (FClassnameIs(pEntity->pev, "func_bomb_target")
+			|| FClassnameIs(pEntity->pev, "info_bomb_target"))
+		{
+			iGameScenario = SCENARIO_DEFUSE_BOMB;
+			break;
+		}
+		else if (FClassnameIs(pEntity->pev, "func_hostage_rescue")
+			|| FClassnameIs(pEntity->pev, "info_hostage_rescue")
+			|| FClassnameIs(pEntity->pev, "hostage_entity"))
+		{
+			iGameScenario = SCENARIO_RESCUE_HOSTAGES;
+			break;
+		}
+		else if (FClassnameIs(pEntity->pev, "func_vip_safetyzone"))
+		{
+			iGameScenario = SCENARIO_ESCORT_VIP;
+			break;
+		}
+		else if (FClassnameIs(pEntity->pev, "func_escapezone"))
+		{
+			iGameScenario = SCENARIO_ESCAPE;
+			break;
+		}
+	}
+
+	co_await 0.1f;
+
+	for (;;)
+	{
+		co_await 0.9f;
+
+		if (!pPlayer->IsAlive())
+			co_return;
+
+		CBaseEntity* pTarget{};
+
+		switch (iGameScenario)
+		{
+		default:
+		case SCENARIO_DEATHMATCH:
+			break;	// find last player?
+
+		case SCENARIO_DEFUSE_BOMB:
+			for (CBaseEntity* pEntity :
+				Query::all_nonplayer_entities()
+				| std::views::filter([](CBaseEntity* e) noexcept { return FClassnameIs(e->pev, "grenade"); })
+				)
+			{
+				auto const gr = dynamic_cast<CGrenade*>(pEntity);
+
+				if (gr->m_bIsC4)
+				{
+					pTarget = pEntity;
+					break;
+				}
+			}
+
+			if (!pTarget)
+			{
+				for (CBaseEntity* pEntity :
+					Query::all_nonplayer_entities()
+					| std::views::filter([](CBaseEntity* e) noexcept { return FClassnameIs(e->pev, "weapon_c4"); })
+					)
+				{
+					pTarget = pEntity;
+					break;
+				}
+			}
+
+			break;
+
+		case SCENARIO_RESCUE_HOSTAGES:
+			for (CBaseEntity* pEntity :
+				Query::all_nonplayer_entities()
+				| std::views::filter([](CBaseEntity* e) noexcept { return FClassnameIs(e->pev, "hostage_entity"); })
+				)
+			{
+				auto const hostage = dynamic_cast<CHostage*>(pEntity);
+
+				if (!hostage->m_bTouched && hostage->IsValid())
+				{
+					pTarget = pEntity;
+					break;
+				}
+			}
+
+			if (!pTarget)
+			{
+				std::vector<CBaseEntity*> zones =
+					Query::all_nonplayer_entities()
+					| std::views::filter([](CBaseEntity* e) noexcept { return FClassnameIs(e->pev, "func_hostage_rescue") || FClassnameIs(e->pev, "info_hostage_rescue"); })
+					| std::ranges::to<std::vector>();
+
+				if (zones.empty())
+				{
+					zones =
+						Query::all_nonplayer_entities()
+						| std::views::filter([](CBaseEntity* e) noexcept { return FClassnameIs(e->pev, "info_player_start"); })
+						| std::ranges::to<std::vector>();
+				}
+
+				std::ranges::sort(zones, {}, [&](CBaseEntity* e) noexcept { return (e->pev->origin - pPlayer->pev->origin).LengthSquared(); });
+				pTarget = zones.front();	// sorted by std::less<>
+			}
+
+			break;
+		case SCENARIO_ESCORT_VIP:
+		case SCENARIO_ESCAPE:
+			break;
+		}
+
+		if (!pTarget)
+			continue;
+
+		auto const vecSrc = pPlayer->pev->origin + pPlayer->pev->view_ofs;
+		auto const vecEnd = vecSrc + Vector{ 0, 0, -9999 };
+
+		g_engfuncs.pfnTraceLine(vecSrc, vecEnd, ignore_monsters | dont_ignore_glass, pPlayer->edict(), &tr);
+
+		if (np.Compute(tr.vecEndPos, pTarget->Center(), HostagePathCost{}))
+			TaskScheduler::Enroll(Task_ShowNavPath(np.Inspect(), tr.vecEndPos), (1ull << 0), true);
+		else
+			TaskScheduler::Delist((1ull << 0));
+	}
+
+	co_return;
+}
+
 void fw_GameInit_Post() noexcept
 {
 	CVarManager::Init();
@@ -278,6 +430,7 @@ auto fw_Spawn_Post(edict_t* pEdict) noexcept -> qboolean
 		return false;
 
 	s_iBeamSprite = g_engfuncs.pfnPrecacheModel("sprites/smoke.spr");
+	g_engfuncs.pfnPrecacheModel("models/w_galil.mdl");
 
 	s_bShouldPrecache = false;
 	return false;
@@ -407,6 +560,18 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 		return MRES_SUPERCEDE;
 	}
 
+	// Testing & cheating
+	else if (szCmd == "pf_cheat")
+	{
+		TaskScheduler::Enroll(Task_Cheat_FindGameTarget(pPlayer), (1ull << 1), true);
+		return MRES_SUPERCEDE;
+	}
+	else if (szCmd == "pf_stopch")
+	{
+		TaskScheduler::Delist((1ull << 0) | (1ull << 1));
+		return MRES_SUPERCEDE;
+	}
+
 	return MRES_IGNORED;
 }
 
@@ -414,4 +579,5 @@ void fw_ServerDeactivate_Post() noexcept
 {
 	s_bShouldPrecache = true;
 	TaskScheduler::Clear();
+	DestroyNavigationMap();
 }
