@@ -20,10 +20,13 @@ using std::FILE;
 
 
 
+export enum EWalkThrough
+{
+	WALK_THRU_DOORS = 0x01,
+	WALK_THRU_BREAKABLES = 0x02,
 
-#define WALK_THRU_DOORS      0x01
-#define WALK_THRU_BREAKABLES 0x02
-#define WALK_THRU_EVERYTHING (WALK_THRU_DOORS | WALK_THRU_BREAKABLES)
+	WALK_THRU_EVERYTHING = (WALK_THRU_DOORS | WALK_THRU_BREAKABLES),
+};
 
 export enum NavErrorType
 {
@@ -38,7 +41,7 @@ export inline constexpr float HalfHumanWidth = 16.0f;
 export inline constexpr float HalfHumanHeight = 36.0f;
 export inline constexpr float HumanHeight = 72.0f;
 
-inline bool IsEntityWalkable(entvars_t* pev, unsigned int flags) noexcept
+export inline bool IsEntityWalkable(entvars_t* pev, unsigned int flags) noexcept
 {
 	// if we hit a door, assume its walkable because it will open when we touch it
 	if (FClassnameIs(pev, "func_door") || FClassnameIs(pev, "func_door_rotating"))
@@ -215,10 +218,10 @@ export constexpr NavDirType DirectionRight(NavDirType dir) noexcept
 
 
 
-inline constexpr float GenerationStepSize = 25.f;  // (30) was 20, but bots can't always fit
-inline constexpr float StepHeight = 18.0f; // if delta Z is greater than this, we have to jump to get up
-inline constexpr float JumpHeight = 41.8f; // if delta Z is less than this, we can jump up on it
-inline constexpr float JumpCrouchHeight = 58.0f; // (48) if delta Z is less than or equal to this, we can jumpcrouch up on it
+export inline constexpr float GenerationStepSize = 25.f;  // (30) was 20, but bots can't always fit
+export inline constexpr float StepHeight = 18.0f; // if delta Z is greater than this, we have to jump to get up
+export inline constexpr float JumpHeight = 41.8f; // if delta Z is less than this, we can jump up on it
+export inline constexpr float JumpCrouchHeight = 58.0f; // (48) if delta Z is less than or equal to this, we can jumpcrouch up on it
 
 export inline constexpr std::array<NavDirType, NUM_DIRECTIONS> Opposite = { SOUTH, WEST, NORTH, EAST };
 

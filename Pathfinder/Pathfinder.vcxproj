@@ -112,6 +112,7 @@
     <ClCompile Include="..\Common\WinAPI.cpp" />
     <ClCompile Include="..\Common\WinAPI.ixx" />
     <ClCompile Include="DllFunctions.cpp" />
+    <ClCompile Include="Improvisational.ixx" />
     <ClCompile Include="LocalNav.ixx" />
     <ClCompile Include="MonsterNav.ixx" />
     <ClCompile Include="Nav.Const.ixx" />

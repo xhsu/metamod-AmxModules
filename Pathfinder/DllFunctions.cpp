@@ -3,12 +3,14 @@ import hlsdk;
 
 import CBase;
 import ConsoleVar;
-import LocalNav;
-import MonsterNav;
-import Nav;
-import Pathfinder;
 import Plugin;
 import Task;
+
+import Improvisational;	// CZ Hostage
+import LocalNav;	// CS Hostage
+import MonsterNav;	// HL1
+import Nav;			// CZBOT
+import Pathfinder;	// Testing module
 
 
 static short s_iBeamSprite = 0;
@@ -41,6 +43,8 @@ inline void UTIL_DrawBeamPoints(Vector const& vecStart, Vector const& vecEnd,
 
 Task Task_ShowPathfinder(Pathfinder const& PF) noexcept
 {
+	static constexpr Vector VEC_OFS{ 0, 0, VEC_DUCK_HULL_MAX.z / 2.f };
+
 	for (;;)
 	{
 		for (size_t i = 2; i < PF.m_pathLength; ++i)
@@ -51,19 +55,143 @@ Task Task_ShowPathfinder(Pathfinder const& PF) noexcept
 			switch (cur.how)
 			{
 			case GO_LADDER_DOWN:
-				UTIL_DrawBeamPoints(cur.ladder->m_top, cur.ladder->m_bottom, 5, 192, 0, 0);
+				UTIL_DrawBeamPoints(
+					cur.ladder->m_top,
+					cur.ladder->m_bottom,
+					5, 192, 0, 0
+				);
 				break;
 
 			case GO_LADDER_UP:
-				UTIL_DrawBeamPoints(cur.ladder->m_bottom, cur.ladder->m_top, 5, 0, 192, 0);
+				UTIL_DrawBeamPoints(
+					cur.ladder->m_bottom,
+					cur.ladder->m_top,
+					5, 0, 192, 0
+				);
 				break;
 
 			case GO_JUMP:
-				UTIL_DrawBeamPoints(prev.pos, cur.pos, 9, 0, 0, 192);
+				UTIL_DrawBeamPoints(
+					prev.pos + VEC_OFS,
+					cur.pos + VEC_OFS,
+					9, 0, 0, 192
+				);
 				break;
 
 			default:
-				UTIL_DrawBeamPoints(prev.pos, cur.pos, 9, 255, 255, 255);
+				UTIL_DrawBeamPoints(
+					prev.pos + VEC_OFS,
+					cur.pos + VEC_OFS,
+					9, 255, 255, 255
+				);
+				break;
+			}
+
+			co_await 0.01f;
+		}
+
+		co_await 0.01f;	// avoid inf loop.
+	}
+
+	co_return;
+}
+
+Task Task_ShowNavPath(std::span<PathSegment const> seg, Vector const vecSrc) noexcept
+{
+	static constexpr Vector VEC_OFS{ 0, 0, VEC_DUCK_HULL_MAX.z / 2.f };
+
+	for (;;)
+	{
+		if (seg.size() >= 1)
+		{
+			UTIL_DrawBeamPoints(
+				vecSrc + VEC_OFS,
+				seg.front().pos + VEC_OFS,
+				5, 255, 255, 255
+			);
+		}
+
+		for (size_t i = 1; i < seg.size(); ++i)
+		{
+			auto& prev = seg[i - 1];
+			auto& cur = seg[i];
+
+/*
+			if (prev.how != GO_LADDER_DOWN && prev.how != GO_LADDER_UP
+				&& cur.how != GO_LADDER_DOWN && cur.how != GO_LADDER_UP)
+			{
+				continue;
+			}
+*/
+
+			switch (cur.how)
+			{
+			case GO_LADDER_DOWN:
+				UTIL_DrawBeamPoints(
+					cur.ladder->m_top,
+					cur.ladder->m_bottom,
+					5, 192, 0, 0
+				);
+				break;
+
+			case GO_LADDER_UP:
+				UTIL_DrawBeamPoints(
+					cur.ladder->m_bottom,
+					cur.ladder->m_top,
+					5, 0, 192, 0
+				);
+				break;
+
+			case GO_JUMP:
+				UTIL_DrawBeamPoints(
+					prev.pos + VEC_OFS,
+					cur.pos + VEC_OFS,
+					5, 0, 0, 192
+				);
+				break;
+
+				// Connect regular path with ladders.
+			default:
+				if (prev.how == GO_LADDER_UP)
+				{
+					UTIL_DrawBeamPoints(
+						prev.ladder->m_top,
+						cur.pos + VEC_OFS,
+						5, 255, 255, 255
+					);
+				}
+				else if (cur.how == GO_LADDER_UP)
+				{
+					UTIL_DrawBeamPoints(
+						prev.pos + VEC_OFS,
+						cur.ladder->m_bottom,
+						5, 255, 255, 255
+					);
+				}
+				else if (prev.how == GO_LADDER_DOWN)
+				{
+					UTIL_DrawBeamPoints(
+						prev.ladder->m_bottom,
+						cur.pos + VEC_OFS,
+						5, 255, 255, 255
+					);
+				}
+				else if (cur.how == GO_LADDER_DOWN)
+				{
+					UTIL_DrawBeamPoints(
+						prev.pos + VEC_OFS,
+						cur.ladder->m_top,
+						5, 255, 255, 255
+					);
+				}
+				else
+				{
+					UTIL_DrawBeamPoints(
+						prev.pos + VEC_OFS,
+						cur.pos + VEC_OFS,
+						5, 255, 255, 255
+					);
+				}
 				break;
 			}
 
@@ -255,6 +383,24 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 		{
 			TaskScheduler::Enroll(Task_ShowMN(MN, pPlayer->pev->origin), (1 << 0), true);
 		}
+		else
+			g_engfuncs.pfnServerPrint("No path found!\n");
+
+		return MRES_SUPERCEDE;
+	}
+
+	// Improv NAV
+	else if (szCmd == "pf_im")
+	{
+		auto const vecSrc = pPlayer->pev->origin + pPlayer->pev->view_ofs;
+		auto const vecEnd = vecSrc + Vector{ 0, 0, -9999 };
+
+		TraceResult tr{};
+		g_engfuncs.pfnTraceLine(vecSrc, vecEnd, ignore_monsters | dont_ignore_glass, pPlayer->edict(), &tr);
+
+		static CNavPath np{};
+		if (np.Compute(tr.vecEndPos, vecTarget, HostagePathCost{}))
+			TaskScheduler::Enroll(Task_ShowNavPath(np.Inspect(), tr.vecEndPos), (1ull << 0), true);
 		else
 			g_engfuncs.pfnServerPrint("No path found!\n");
 
