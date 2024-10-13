@@ -83,24 +83,6 @@ inline auto BotSIN(float angle) noexcept
 	return cosTable[angle];
 }
 
-// Simple class for tracking intervals of game time
-struct IntervalTimer
-{
-	void Reset() noexcept { m_timestamp = gpGlobals->time; }
-	void Start() noexcept { m_timestamp = gpGlobals->time; }
-	constexpr void Invalidate() noexcept { m_timestamp = -1.0f; }
-
-	constexpr bool HasStarted() const noexcept { return (m_timestamp > 0.0f); }
-
-	// if not started, elapsed time is very large
-	float GetElapsedTime()             const noexcept { return (HasStarted()) ? (gpGlobals->time - m_timestamp) : 99999.9f; }
-	bool IsLessThen(float duration)    const noexcept { return (gpGlobals->time - m_timestamp < duration) ? true : false; }
-	bool IsGreaterThen(float duration) const noexcept { return (gpGlobals->time - m_timestamp > duration) ? true : false; }
-
-private:
-	float m_timestamp{ -1.f };
-};
-
 #pragma endregion Util
 
 
@@ -146,7 +128,7 @@ bool NavAreaBuildPath(
 	}
 
 	// determine actual goal position
-	Vector const actualGoalPos = (goalPos != nullptr) ? goalPos : (*goalArea->GetCenter());
+	Vector const actualGoalPos = (goalPos != nullptr) ? goalPos : goalArea->GetCenter();
 
 	// start search
 	CNavArea::ClearSearchLists();
@@ -154,7 +136,7 @@ bool NavAreaBuildPath(
 	// compute estimate of path length
 	// #PF_TODO: Cost might work as "manhattan distance"
 	// LUNA: manhattan distance for 3-dim vectors: std::abs(x1-x2) + abs(y1-y2) + abs(z1-z2)
-	startArea->SetTotalCost((float)(*startArea->GetCenter() - actualGoalPos).Length());
+	startArea->SetTotalCost((float)(startArea->GetCenter() - actualGoalPos).Length());
 
 	auto const initCost = costFunc(startArea, nullptr, nullptr);
 	if (initCost < 0.0f)
@@ -322,7 +304,7 @@ bool NavAreaBuildPath(
 			else
 			{
 				// compute estimate of distance left to go
-				auto const newCostRemaining = (*newArea->GetCenter() - actualGoalPos).Length();
+				auto const newCostRemaining = (newArea->GetCenter() - actualGoalPos).Length();
 
 				// track closest area to goal in case path fails
 				if (closestArea && newCostRemaining < closestAreaDist)
@@ -416,7 +398,7 @@ export struct HostagePathCost
 			}
 			else
 			{
-				dist = (float)(*area->GetCenter() - *fromArea->GetCenter()).Length();
+				dist = (float)(area->GetCenter() - fromArea->GetCenter()).Length();
 			}
 
 			float cost = dist + fromArea->GetCostSoFar();
@@ -666,11 +648,11 @@ export struct CNavPath
 	{
 		Invalidate();
 
-		auto const startArea = TheNavAreaGrid.GetNearestNavArea(&start);
+		auto const startArea = TheNavAreaGrid.GetNearestNavArea(start);
 		if (!startArea)
 			return false;
 
-		auto const goalArea = TheNavAreaGrid.GetNavArea(&goal);
+		auto const goalArea = TheNavAreaGrid.GetNavArea(goal);
 
 		// if we are already in the goal area, build trivial path
 		if (startArea == goalArea)
@@ -683,9 +665,9 @@ export struct CNavPath
 		Vector pathEndPosition = goal;
 
 		if (goalArea)
-			pathEndPosition.z = goalArea->GetZ(&pathEndPosition);
+			pathEndPosition.z = goalArea->GetZ(pathEndPosition);
 		else
-			GetGroundHeight(&pathEndPosition, &pathEndPosition.z);
+			GetGroundHeight(pathEndPosition, &pathEndPosition.z);
 
 		// Compute shortest path to goal
 		CNavArea* closestArea{};
@@ -748,7 +730,7 @@ private:
 			return false;
 
 		// start in first area's center
-		m_path[0].pos = *m_path[0].area->GetCenter();
+		m_path[0].pos = m_path[0].area->GetCenter();
 		m_path[0].ladder = nullptr;
 		m_path[0].how = NUM_TRAVERSE_TYPES;
 
@@ -771,7 +753,7 @@ private:
 				AddDirectionVector(&to->pos, (NavDirType)to->how, stepInDist);
 
 				// we need to walk out of "from" area, so keep Z where we can reach it
-				to->pos.z = from->area->GetZ(&to->pos);
+				to->pos.z = from->area->GetZ(to->pos);
 
 				// if this is a "jump down" connection, we must insert an additional point on the path
 				if (to->area->IsConnected(from->area, NUM_DIRECTIONS) == false)
@@ -803,7 +785,7 @@ private:
 						m_path[i].pos.y = to->pos.y + pushDist * dir.y;
 
 						// put this one at the bottom of the fall
-						m_path[i].pos.z = to->area->GetZ(&m_path[i].pos);
+						m_path[i].pos.z = to->area->GetZ(m_path[i].pos);
 					}
 				}
 			}
@@ -867,11 +849,11 @@ private:
 	{
 		m_segmentCount = 0;
 
-		auto const startArea = TheNavAreaGrid.GetNearestNavArea(&start);
+		auto const startArea = TheNavAreaGrid.GetNearestNavArea(start);
 		if (!startArea)
 			return false;
 
-		auto const goalArea = TheNavAreaGrid.GetNearestNavArea(&goal);
+		auto const goalArea = TheNavAreaGrid.GetNearestNavArea(goal);
 		if (!goalArea)
 			return false;
 
@@ -880,14 +862,14 @@ private:
 		m_path[0].area = startArea;
 		m_path[0].pos.x = start.x;
 		m_path[0].pos.y = start.y;
-		m_path[0].pos.z = startArea->GetZ(&start);
+		m_path[0].pos.z = startArea->GetZ(start);
 		m_path[0].ladder = nullptr;
 		m_path[0].how = NUM_TRAVERSE_TYPES;
 
 		m_path[1].area = goalArea;
 		m_path[1].pos.x = goal.x;
 		m_path[1].pos.y = goal.y;
-		m_path[1].pos.z = goalArea->GetZ(&goal);
+		m_path[1].pos.z = goalArea->GetZ(goal);
 		m_path[1].ladder = nullptr;
 		m_path[1].how = NUM_TRAVERSE_TYPES;
 
@@ -1359,7 +1341,7 @@ export struct CNavPathFollower
 				}
 
 				Vector close{};
-				to->GetClosestPointOnArea(&m_improv->GetCentroid(), &close);
+				to->GetClosestPointOnArea(m_improv->GetCentroid(), &close);
 
 				if ((close - m_improv->GetFeet()).Make2D().LengthSquared() > (crouchRange * crouchRange))
 					break;

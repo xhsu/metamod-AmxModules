@@ -116,7 +116,9 @@
     <ClCompile Include="LocalNav.ixx" />
     <ClCompile Include="MonsterNav.ixx" />
     <ClCompile Include="Nav.Const.ixx" />
+    <ClCompile Include="Nav.HidingSpot.ixx" />
     <ClCompile Include="Nav.ixx" />
+    <ClCompile Include="Nav.Ladder.ixx" />
     <ClCompile Include="Pathfinder.cpp" />
     <ClCompile Include="Pathfinder.ixx" />
     <ClCompile Include="Plugin.cpp" />

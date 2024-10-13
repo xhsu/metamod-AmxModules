@@ -10,6 +10,8 @@ export module Nav:Const;
 import std;
 import hlsdk;
 
+import CBase;
+
 #pragma region steam_util.h
 export class SteamFile
 {
@@ -55,6 +57,31 @@ private:
 #pragma endregion steam_util.h
 
 #pragma region bot_util.h
+inline void UTIL_DrawBeamPoints(Vector const& vecStart, Vector const& vecEnd,
+	int iLifetime, std::uint8_t bRed, std::uint8_t bGreen, std::uint8_t bBlue) noexcept
+{
+	g_engfuncs.pfnMessageBegin(MSG_PVS, SVC_TEMPENTITY, vecStart, nullptr);
+	g_engfuncs.pfnWriteByte(TE_BEAMPOINTS);
+	g_engfuncs.pfnWriteCoord(vecStart.x);
+	g_engfuncs.pfnWriteCoord(vecStart.y);
+	g_engfuncs.pfnWriteCoord(vecStart.z);
+	g_engfuncs.pfnWriteCoord(vecEnd.x);
+	g_engfuncs.pfnWriteCoord(vecEnd.y);
+	g_engfuncs.pfnWriteCoord(vecEnd.z);
+	g_engfuncs.pfnWriteShort(g_engfuncs.pfnModelIndex("sprites/smoke.spr"));
+	g_engfuncs.pfnWriteByte(0);	// starting frame
+	g_engfuncs.pfnWriteByte(0);	// frame rate
+	g_engfuncs.pfnWriteByte(iLifetime);
+	g_engfuncs.pfnWriteByte(10);	// width
+	g_engfuncs.pfnWriteByte(0);	// noise
+	g_engfuncs.pfnWriteByte(bRed);
+	g_engfuncs.pfnWriteByte(bGreen);
+	g_engfuncs.pfnWriteByte(bBlue);
+	g_engfuncs.pfnWriteByte(255);	// brightness
+	g_engfuncs.pfnWriteByte(0);	// scroll speed
+	g_engfuncs.pfnMessageEnd();
+}
+
 void CONSOLE_ECHO(const char* pszMsg, ...) noexcept
 {
 	va_list argptr;
@@ -67,22 +94,75 @@ void CONSOLE_ECHO(const char* pszMsg, ...) noexcept
 	g_engfuncs.pfnServerPrint(szStr);
 }
 
-// Simple class for counting down a short interval of time
-export class CountdownTimer
+// Return the local player
+inline CBasePlayer* UTIL_GetLocalPlayer() noexcept
 {
-public:
-	void Reset() noexcept { m_timestamp = gpGlobals->time + m_duration; }
+	// no "local player" if this is a dedicated server or a single player game
+	if (g_engfuncs.pfnIsDedicatedServer())
+	{
+		// just try to find any player
+		for (int iIndex = 1; iIndex <= gpGlobals->maxClients; iIndex++)
+		{
+			auto const pPlayer = ent_cast<CBasePlayer*>(iIndex);
 
-	void Start(float duration) noexcept { m_timestamp = gpGlobals->time + duration; m_duration = duration; }
-	bool HasStarted() const noexcept { return (m_timestamp > 0.0f); }
+			if (!pPlayer || pPlayer->IsDormant())
+				continue;
 
-	void Invalidate() noexcept { m_timestamp = -1.0f; }
-	bool IsElapsed() const noexcept { return (gpGlobals->time > m_timestamp); }
+			if (FStrEq(STRING(pPlayer->pev->netname), ""))
+				continue;
+
+			if (pPlayer->IsBot())
+				continue;
+
+			if (pPlayer->m_iTeam != TEAM_SPECTATOR && pPlayer->m_iTeam != TEAM_CT)
+				continue;
+
+			if (pPlayer->m_iJoiningState != JoinState::JOINED)
+				continue;
+
+			return pPlayer;
+		}
+
+		return nullptr;
+	}
+
+	return ent_cast<CBasePlayer*>(1);
+}
+
+// Simple class for counting down a short interval of time
+export struct CountdownTimer
+{
+	inline void Reset() noexcept { m_timestamp = gpGlobals->time + m_duration; }
+
+	inline void Start(float duration) noexcept { m_timestamp = gpGlobals->time + duration; m_duration = duration; }
+	inline bool HasStarted() const noexcept { return (m_timestamp > 0.0f); }
+
+	inline void Invalidate() noexcept { m_timestamp = -1.0f; }
+	inline bool IsElapsed() const noexcept { return (gpGlobals->time > m_timestamp); }
 
 private:
 	float m_duration{ 0.f };
 	float m_timestamp{ -1.f };
 };
+
+// Simple class for tracking intervals of game time
+export struct IntervalTimer
+{
+	inline void Reset() noexcept { m_timestamp = gpGlobals->time; }
+	inline void Start() noexcept { m_timestamp = gpGlobals->time; }
+	inline void Invalidate() noexcept { m_timestamp = -1.0f; }
+
+	inline bool HasStarted() const noexcept { return (m_timestamp > 0.0f); }
+
+	// if not started, elapsed time is very large
+	inline float GetElapsedTime()             const noexcept { return (HasStarted()) ? (gpGlobals->time - m_timestamp) : 99999.9f; }
+	inline bool IsLessThen(float duration)    const noexcept { return (gpGlobals->time - m_timestamp < duration) ? true : false; }
+	inline bool IsGreaterThen(float duration) const noexcept { return (gpGlobals->time - m_timestamp > duration) ? true : false; }
+
+private:
+	float m_timestamp{ -1.f };
+};
+
 
 #pragma endregion bot_util.h
 
@@ -244,6 +324,109 @@ export auto Place_IDToName(Place place) noexcept -> std::optional<std::string_vi
 
 #pragma endregion Place
 
+#pragma region WalkingTest
+
+export enum EWalkThrough
+{
+	WALK_THRU_DOORS = 0x01,
+	WALK_THRU_BREAKABLES = 0x02,
+
+	WALK_THRU_EVERYTHING = (WALK_THRU_DOORS | WALK_THRU_BREAKABLES),
+};
+
+export inline constexpr float HalfHumanWidth = 16.0f;
+export inline constexpr float HalfHumanHeight = 36.0f;
+export inline constexpr float HumanHeight = 72.0f;
+
+export inline bool IsEntityWalkable(entvars_t* pev, unsigned int flags) noexcept
+{
+	// if we hit a door, assume its walkable because it will open when we touch it
+	if (FClassnameIs(pev, "func_door") || FClassnameIs(pev, "func_door_rotating"))
+		return (flags & WALK_THRU_DOORS) ? true : false;
+
+	// if we hit a breakable object, assume its walkable because we will shoot it when we touch it
+	else if (FClassnameIs(pev, "func_breakable") && pev->takedamage == DAMAGE_YES)
+		return (flags & WALK_THRU_BREAKABLES) ? true : false;
+
+	return false;
+}
+
+export bool GetGroundHeight(const Vector& pos, float* height, Vector* normal = nullptr) noexcept
+{
+	Vector const to{ pos.x, pos.y, pos.z - 9999.f };
+
+	TraceResult result{};
+	edict_t* ignore = nullptr;
+
+	static constexpr float maxOffset = 100.0f;
+	static constexpr float inc = 10.0f;
+
+	struct GroundLayerInfo
+	{
+		float ground{};
+		Vector normal{};
+	};
+	std::array<GroundLayerInfo, 16> layer{};
+
+	size_t layerCount = 0;
+	for (auto offset = 1.0f; offset < maxOffset; offset += inc)
+	{
+		auto from = pos + Vector(0, 0, offset);
+
+		g_engfuncs.pfnTraceLine(from, to, ignore_monsters | dont_ignore_glass, ignore, &result);
+
+		if (result.flFraction != 1.0f && result.pHit)
+		{
+			// ignoring any entities that we can walk through
+			if (IsEntityWalkable(&result.pHit->v, WALK_THRU_DOORS | WALK_THRU_BREAKABLES))
+			{
+				ignore = result.pHit;
+				continue;
+			}
+		}
+
+		if (!result.fStartSolid)
+		{
+			if (layerCount == 0 || result.vecEndPos.z > layer[layerCount - 1].ground)
+			{
+				layer[layerCount].ground = result.vecEndPos.z;
+				layer[layerCount].normal = result.vecPlaneNormal;
+				++layerCount;
+
+				if (layerCount == layer.size())
+					break;
+			}
+		}
+	}
+
+	if (layerCount == 0)
+		return false;
+
+	size_t i{};
+	for (; i < layerCount - 1; i++)
+	{
+		if (layer[i + 1].ground - layer[i].ground >= HalfHumanHeight)
+			break;
+	}
+
+	*height = layer[i].ground;
+
+	if (normal)
+	{
+		*normal = layer[i].normal;
+	}
+
+	return true;
+}
+
+export inline constexpr float GenerationStepSize = 25.f;  // (30) was 20, but bots can't always fit
+export inline constexpr float StepHeight = 18.0f; // if delta Z is greater than this, we have to jump to get up
+export inline constexpr float JumpHeight = 41.8f; // if delta Z is less than this, we can jump up on it
+export inline constexpr float JumpCrouchHeight = 58.0f; // (48) if delta Z is less than or equal to this, we can jumpcrouch up on it
+
+
+#pragma endregion WalkingTest
+
 #pragma region CNavArea
 
 export enum NavCornerType
@@ -291,8 +474,8 @@ export using NavConnectList = std::list<NavConnect>;
 
 export struct Ray
 {
-	Vector from;
-	Vector to;
+	Vector from{};
+	Vector to{};
 };
 
 export enum LadderDirectionType
@@ -309,6 +492,99 @@ export enum RouteType
 };
 
 #pragma endregion CNavArea
+
+#pragma region NavDir
+
+export enum NavDirType
+{
+	NORTH = 0,
+	EAST,
+	SOUTH,
+	WEST,
+
+	NUM_DIRECTIONS
+};
+
+export inline constexpr std::array<NavDirType, NUM_DIRECTIONS> Opposite = { SOUTH, WEST, NORTH, EAST };
+
+export constexpr void AddDirectionVector(Vector* v, NavDirType dir, float amount) noexcept
+{
+	switch (dir)
+	{
+	case NORTH:
+		v->y -= amount;
+		return;
+	case SOUTH:
+		v->y += amount;
+		return;
+	case EAST:
+		v->x += amount;
+		return;
+	case WEST:
+		v->x -= amount;
+		return;
+	}
+}
+
+export constexpr void DirectionToVector2D(NavDirType dir, Vector2D* v) noexcept
+{
+	switch (dir)
+	{
+	case NORTH:
+		v->x = 0.0f;
+		v->y = -1.0f;
+		break;
+	case SOUTH:
+		v->x = 0.0f;
+		v->y = 1.0f;
+		break;
+	case EAST:
+		v->x = 1.0f;
+		v->y = 0.0f;
+		break;
+	case WEST:
+		v->x = -1.0f;
+		v->y = 0.0f;
+		break;
+	}
+}
+
+export constexpr NavDirType DirectionLeft(NavDirType dir) noexcept
+{
+	switch (dir)
+	{
+	case NORTH:
+		return WEST;
+	case SOUTH:
+		return EAST;
+	case EAST:
+		return NORTH;
+	case WEST:
+		return SOUTH;
+	}
+
+	return NORTH;
+}
+
+export constexpr NavDirType DirectionRight(NavDirType dir) noexcept
+{
+	switch (dir)
+	{
+	case NORTH:
+		return EAST;
+	case SOUTH:
+		return WEST;
+	case EAST:
+		return SOUTH;
+	case WEST:
+		return NORTH;
+	}
+
+	return NORTH;
+}
+
+
+#pragma endregion NavDir
 
 #pragma region nav_file
 // version
@@ -429,13 +705,79 @@ private:
 	std::vector<Place> m_directory{};
 };
 
+export inline PlaceDirectory placeDirectory{};
+
 #ifdef CSBOT_ENABLE_SAVE
 bool SaveNavigationMap(const char* filename);
 void LoadLocationFile(const char* filename);
-void SanityCheckNavigationMap(const char* mapName);	// Performs a lightweight sanity-check of the specified map's nav mesh
-NavErrorType LoadNavigationMap();
 #endif
 
-export inline PlaceDirectory placeDirectory{};
+// to help identify nav files
+export inline constexpr auto NAV_MAGIC_NUMBER = 0xFEEDFACE;
+
+// Performs a lightweight sanity-check of the specified map's nav mesh
+export void SanityCheckNavigationMap(const char* mapName) noexcept
+{
+	if (!mapName)
+	{
+		CONSOLE_ECHO("ERROR: navigation file not specified.\n");
+		return;
+	}
+
+	// nav filename is derived from map filename
+	auto const bspFilename = std::format("maps\\{}.bsp", mapName);
+	auto const navFilename = std::format("maps\\{}.nav", mapName);
+
+	SteamFile navFile(navFilename.c_str());
+
+	if (!navFile.IsValid())
+	{
+		CONSOLE_ECHO("ERROR: navigation file %s does not exist.\n", navFilename.c_str());
+		return;
+	}
+
+	// check magic number
+	unsigned int magic{};
+	auto result = navFile.Read(&magic, sizeof(unsigned int));
+	if (!result || magic != NAV_MAGIC_NUMBER)
+	{
+		CONSOLE_ECHO("ERROR: Invalid navigation file '%s'.\n", navFilename.c_str());
+		return;
+	}
+
+	// read file version number
+	unsigned int version{};
+	result = navFile.Read(&version, sizeof(unsigned int));
+	if (!result || version > NAV_VERSION)
+	{
+		CONSOLE_ECHO("ERROR: Unknown version in navigation file %s.\n", navFilename.c_str());
+		return;
+	}
+
+	if (version >= 4)
+	{
+		// get size of source bsp file and verify that the bsp hasn't changed
+		unsigned int saveBspSize{};
+		navFile.Read(&saveBspSize, sizeof(unsigned int));
+
+		// verify size
+		if (saveBspSize == 0)
+		{
+			CONSOLE_ECHO("ERROR: No map corresponds to navigation file %s.\n", navFilename.c_str());
+			return;
+		}
+
+		auto const bspSize = (unsigned int)g_engfuncs.pfnGetFileSize(bspFilename.c_str());
+		if (bspSize != saveBspSize)
+		{
+			// this nav file is out of date for this bsp file
+			CONSOLE_ECHO("ERROR: Out-of-date navigation data in navigation file %s.\n", navFilename.c_str());
+			return;
+		}
+	}
+
+	CONSOLE_ECHO("navigation file %s passes the sanity check.\n", navFilename.c_str());
+}
+
 
 #pragma endregion nav_file

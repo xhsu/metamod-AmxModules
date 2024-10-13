@@ -132,6 +132,12 @@
     <ClCompile Include="Quests.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
+    <ClCompile Include="Nav.Ladder.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="Nav.HidingSpot.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.hpp">

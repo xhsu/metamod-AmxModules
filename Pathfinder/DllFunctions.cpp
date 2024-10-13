@@ -215,7 +215,7 @@ Task Task_ShowLadders() noexcept
 	{
 		for (auto&& ladder : TheNavLadderList)
 		{
-			UTIL_DrawBeamPoints(ladder->m_bottom, ladder->m_top, 9, 192, 0, 0);
+			UTIL_DrawBeamPoints(ladder.m_bottom, ladder.m_top, 9, 192, 0, 0);
 			co_await 0.1f;
 		}
 
@@ -307,10 +307,10 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 	{
 		static Pathfinder PF{};
 		PF.pev = pPlayer->pev;
-		PF.m_lastKnownArea = TheNavAreaGrid.GetNavArea(&pPlayer->pev->origin);
+		PF.m_lastKnownArea = TheNavAreaGrid.GetNavArea(pPlayer->pev->origin);
 		PF.m_areaEnteredTimestamp = gpGlobals->time;
 
-		if (PF.ComputePath(TheNavAreaGrid.GetNavArea(&vecTarget), &vecTarget, FASTEST_ROUTE))
+		if (PF.ComputePath(TheNavAreaGrid.GetNavArea(vecTarget), &vecTarget, FASTEST_ROUTE))
 		{
 			for (size_t i = 1; i < PF.m_pathLength; ++i)
 			{

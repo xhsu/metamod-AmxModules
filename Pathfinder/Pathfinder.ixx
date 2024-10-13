@@ -60,14 +60,14 @@ bool NavAreaBuildPath(CNavArea* startArea, CNavArea* goalArea, const Vector* goa
 	}
 
 	// determine actual goal position
-	Vector actualGoalPos = (goalPos != nullptr) ? (*goalPos) : (*goalArea->GetCenter());
+	Vector actualGoalPos = (goalPos != nullptr) ? (*goalPos) : (goalArea->GetCenter());
 
 	// start search
 	CNavArea::ClearSearchLists();
 
 	// compute estimate of path length
 	// TODO: Cost might work as "manhattan distance"
-	startArea->SetTotalCost((float)(*startArea->GetCenter() - actualGoalPos).Length());
+	startArea->SetTotalCost((float)(startArea->GetCenter() - actualGoalPos).Length());
 
 	auto initCost = costFunc(startArea, nullptr, nullptr);
 	if (initCost < 0.0f)
@@ -234,7 +234,7 @@ bool NavAreaBuildPath(CNavArea* startArea, CNavArea* goalArea, const Vector* goa
 			else
 			{
 				// compute estimate of distance left to go
-				float const newCostRemaining = (float)(*newArea->GetCenter() - actualGoalPos).Length();
+				float const newCostRemaining = (float)(newArea->GetCenter() - actualGoalPos).Length();
 
 				// track closest area to goal in case path fails
 				if (closestArea && newCostRemaining < closestAreaDist)
@@ -285,7 +285,7 @@ struct PathCost
 		return damage;
 	}
 
-	float operator()(CNavArea* area, CNavArea* fromArea, const CNavLadder* ladder, int iTeam = 1, float flHealth = 9999.f, float flAggression = 75.f) const noexcept
+	float operator()(CNavArea* area, CNavArea* fromArea, const CNavLadder* ladder, ECsTeams iTeam = TEAM_UNASSIGNED, float flHealth = 9999.f, float flAggression = 75.f) const noexcept
 	{
 		const float baseDangerFactor = 100.0f;
 
@@ -298,7 +298,7 @@ struct PathCost
 				return 0.0f;
 
 			// first area in path, cost is just danger
-			return dangerFactor * area->GetDanger(iTeam - 1);
+			return dangerFactor * area->GetDanger(iTeam);
 		}
 		else if ((fromArea->GetAttributes() & NAV_JUMP) && (area->GetAttributes() & NAV_JUMP))
 		{
@@ -321,7 +321,7 @@ struct PathCost
 			}
 			else
 			{
-				dist = (float)(*area->GetCenter() - *fromArea->GetCenter()).Length();
+				dist = (float)(area->GetCenter() - fromArea->GetCenter()).Length();
 			}
 
 			// compute distance travelled along path so far
@@ -392,7 +392,7 @@ struct PathCost
 			if (m_route == SAFEST_ROUTE)
 			{
 				// add in the danger of this path - danger is per unit length travelled
-				cost += dist * dangerFactor * area->GetDanger(iTeam - 1);
+				cost += dist * dangerFactor * area->GetDanger(iTeam);
 			}
 
 #ifdef CSBOT_ATTACKING
@@ -447,15 +447,15 @@ export struct Pathfinder
 			return false;
 
 		if (!goal)
-			pathEndPosition = *goalArea->GetCenter();
+			pathEndPosition = goalArea->GetCenter();
 		else
 			pathEndPosition = *goal;
 
 		// make sure path end position is on the ground
 		if (goalArea)
-			pathEndPosition.z = goalArea->GetZ(&pathEndPosition);
+			pathEndPosition.z = goalArea->GetZ(pathEndPosition);
 		else
-			GetGroundHeight(&pathEndPosition, &pathEndPosition.z);
+			GetGroundHeight(pathEndPosition, &pathEndPosition.z);
 
 		// if we are already in the goal area, build trivial path
 		if (startArea == goalArea)
@@ -517,17 +517,17 @@ export struct Pathfinder
 			case GO_NORTH:
 			case GO_SOUTH:
 				pathEndPosition.x = m_path[m_pathLength - 1].pos.x;
-				pathEndPosition.y = effectiveGoalArea->GetCenter()->y;
+				pathEndPosition.y = effectiveGoalArea->GetCenter().y;
 				break;
 
 			case GO_EAST:
 			case GO_WEST:
-				pathEndPosition.x = effectiveGoalArea->GetCenter()->x;
+				pathEndPosition.x = effectiveGoalArea->GetCenter().x;
 				pathEndPosition.y = m_path[m_pathLength - 1].pos.y;
 				break;
 			}
 
-			GetGroundHeight(&pathEndPosition, &pathEndPosition.z);
+			GetGroundHeight(pathEndPosition, &pathEndPosition.z);
 		}
 
 		// append path end position
@@ -565,13 +565,13 @@ export struct Pathfinder
 
 		m_path[0].area = m_lastKnownArea;
 		m_path[0].pos = pev->origin;
-		m_path[0].pos.z = m_lastKnownArea->GetZ(&pev->origin);
+		m_path[0].pos.z = m_lastKnownArea->GetZ(pev->origin);
 		m_path[0].ladder = nullptr;
 		m_path[0].how = NUM_TRAVERSE_TYPES;
 
 		m_path[1].area = m_lastKnownArea;
 		m_path[1].pos = *goal;
-		m_path[1].pos.z = m_lastKnownArea->GetZ(goal);
+		m_path[1].pos.z = m_lastKnownArea->GetZ(*goal);
 		m_path[1].ladder = nullptr;
 		m_path[1].how = NUM_TRAVERSE_TYPES;
 
@@ -589,7 +589,7 @@ export struct Pathfinder
 			return false;
 
 		// start in first area's center
-		m_path[0].pos = *m_path[0].area->GetCenter();
+		m_path[0].pos = m_path[0].area->GetCenter();
 		m_path[0].ladder = nullptr;
 		m_path[0].how = NUM_TRAVERSE_TYPES;
 
@@ -612,7 +612,7 @@ export struct Pathfinder
 				AddDirectionVector(&to->pos, (NavDirType)to->how, stepInDist);
 
 				// we need to walk out of "from" area, so keep Z where we can reach it
-				to->pos.z = from->area->GetZ(&to->pos);
+				to->pos.z = from->area->GetZ(to->pos);
 
 				// if this is a "jump down" connection, we must insert an additional point on the path
 				if (to->area->IsConnected(from->area, NUM_DIRECTIONS) == false)
@@ -644,7 +644,7 @@ export struct Pathfinder
 						m_path[i].pos.y = to->pos.y + pushDist * dir.y;
 
 						// put this one at the bottom of the fall
-						m_path[i].pos.z = to->area->GetZ(&m_path[i].pos);
+						m_path[i].pos.z = to->area->GetZ(m_path[i].pos);
 					}
 				}
 			}
