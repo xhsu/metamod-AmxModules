@@ -121,6 +121,7 @@
     <ClCompile Include="Pathfinder.ixx" />
     <ClCompile Include="Plugin.cpp" />
     <ClCompile Include="Plugin.ixx" />
+    <ClCompile Include="Quests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.hpp" />

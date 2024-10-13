@@ -53,7 +53,7 @@ inline std::map<std::string_view, void(__fastcall*)(CBasePlayerItem*, std::uintp
 void __fastcall HamF_Item_Holster(CBasePlayerItem* pWeapon, std::uintptr_t edx, qboolean skiplocal) noexcept
 {
 	std::string_view const szClassName{ STRING(pWeapon->pev->classname) };
-	if (!gOrgHolsterFn.contains(szClassName))
+	if (!gOrgHolsterFn.contains(szClassName))	[[unlikely]]
 		return;	// Why are we here then?
 
 	gOrgHolsterFn.at(szClassName)(pWeapon, edx, skiplocal);
