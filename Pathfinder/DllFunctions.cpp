@@ -5,11 +5,16 @@
 import std;
 import hlsdk;
 
+import BaseMonster;
 import CBase;
 import ConsoleVar;
+import FileSystem;
+import Models;
 import Plugin;
 import Query;
 import Task;
+import Prefab;
+import VTFH;
 
 import Improvisational;	// CZ Hostage
 import LocalNav;	// CS Hostage
@@ -269,11 +274,28 @@ Task Task_ShowMN(MonsterNav const& MN, Vector const vecSrc) noexcept
 	co_return;
 }
 
+Task Task_ShowArea(CBasePlayer* pPlayer) noexcept
+{
+	for (;;)
+	{
+		co_await 0.1f;
+
+		auto area = TheNavAreaGrid.GetNavArea(pPlayer->pev->origin);
+
+		if (area)
+		{
+			area->Draw(255, 255, 255);
+			area->DrawHidingSpots();
+		}
+	}
+}
+
 extern Task Task_Cheat_Dispatch(CBasePlayer* pPlayer) noexcept;
 
 void fw_GameInit_Post() noexcept
 {
 	CVarManager::Init();
+	FileSystem::Init();
 
 	TaskScheduler::Enroll(CLocalNav::Task_LocalNav());
 }
@@ -285,7 +307,8 @@ auto fw_Spawn_Post(edict_t* pEdict) noexcept -> qboolean
 		return false;
 
 	s_iBeamSprite = g_engfuncs.pfnPrecacheModel("sprites/smoke.spr");
-	g_engfuncs.pfnPrecacheModel("models/w_galil.mdl");
+	g_engfuncs.pfnPrecacheModel("models/w_galil.mdl");	// random bugfix
+	g_engfuncs.pfnPrecacheModel("models/hgrunt.mdl");	// AI test
 
 	s_bShouldPrecache = false;
 	return false;
@@ -294,7 +317,9 @@ auto fw_Spawn_Post(edict_t* pEdict) noexcept -> qboolean
 META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 {
 	static Vector vecTarget{};
+	static EHANDLE<CBaseAI> AI{};
 
+	// CZ BOT NAV
 	if (szCmd == "pf_load")
 	{
 		auto const ret = LoadNavigationMap();
@@ -348,6 +373,12 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 
 		vecTarget = tr.vecEndPos;
 
+		return MRES_SUPERCEDE;
+	}
+
+	else if (szCmd == "pf_area")
+	{
+		TaskScheduler::Enroll(Task_ShowArea(pPlayer), 1ull << 0, true);
 		return MRES_SUPERCEDE;
 	}
 
@@ -427,7 +458,81 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 		return MRES_SUPERCEDE;
 	}
 
+	else if (szCmd == "mdl_read")
+	{
+		if (GoldSrc::CacheStudioModelInfo("models/hgrunt.mdl"))
+		{
+			for (auto&& [szName, info] : GoldSrc::m_StudioInfo.at("models/hgrunt.mdl"))
+			{
+				g_engfuncs.pfnServerPrint(
+					std::format("[{}]: {} - {:.2f}\n", info.m_iSeqIdx, szName, info.m_total_length).c_str()
+				);
+			}
+		}
+
+		return MRES_SUPERCEDE;
+	}
+
+	// AI
+	else if (szCmd == "ai_hg")
+	{
+		auto const vecSrc = pPlayer->pev->origin + pPlayer->pev->view_ofs;
+		auto const vecEnd = vecSrc + pPlayer->pev->v_angle.Front() * 8192.0;
+
+		TraceResult tr{};
+		g_engfuncs.pfnTraceLine(vecSrc, vecEnd, dont_ignore_glass | dont_ignore_monsters, pPlayer->edict(), &tr);
+
+		AI = Prefab_t::Create<CBaseAI>(tr.vecEndPos, Angles{});
+
+		//auto e = g_engfuncs.pfnCreateNamedEntity(MAKE_STRING("info_target"));
+
+		//e->v.solid = SOLID_SLIDEBOX;
+		//e->v.movetype = MOVETYPE_STEP;
+
+		//g_engfuncs.pfnSetSize(e, VEC_HUMAN_HULL_MIN, VEC_HUMAN_HULL_MAX);
+		//g_engfuncs.pfnSetModel(e, "models/hgrunt.mdl");
+		//g_engfuncs.pfnSetOrigin(e, tr.vecEndPos);
+
+		return MRES_SUPERCEDE;
+	}
+	else if (szCmd == "ai_move")
+	{
+		if (AI)
+			AI->Plot_PathToLocation(vecTarget);
+
+		return MRES_SUPERCEDE;
+	}
+	else if (szCmd == "ai_anim")
+	{
+		if (g_engfuncs.pfnCmd_Argc() != 2)
+			return MRES_SUPERCEDE;
+
+		if (AI)
+			AI->PlayAnim(g_engfuncs.pfnCmd_Argv(1));
+
+		return MRES_SUPERCEDE;
+	}
+	else if (szCmd == "ai_loop")
+	{
+		if (AI)
+			AI->m_Scheduler.Enroll(AI->Task_Patrolling(vecTarget), TASK_PLOT_PATROL, true);
+
+		return MRES_SUPERCEDE;
+	}
+	else if (szCmd == "ai_kill")
+	{
+		if (AI)
+			AI->m_Scheduler.Enroll(AI->Task_Kill(0.1f), TASK_REMOVE, true);
+
+		return MRES_SUPERCEDE;
+	}
+
 	return MRES_IGNORED;
+}
+
+void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) noexcept
+{
+	RetrieveCBaseVirtualFn();	// for Prefab
 }
 
 void fw_ServerDeactivate_Post() noexcept

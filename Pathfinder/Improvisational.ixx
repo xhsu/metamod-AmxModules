@@ -67,7 +67,7 @@ struct cos_table_t final
 	std::array<double, 256> m_table{};
 };
 
-inline auto BotCOS(float angle) noexcept
+export inline auto BotCOS(float angle) noexcept
 {
 	static cos_table_t cosTable{};
 
@@ -75,7 +75,7 @@ inline auto BotCOS(float angle) noexcept
 	return cosTable[angle];
 }
 
-inline auto BotSIN(float angle) noexcept
+export inline auto BotSIN(float angle) noexcept
 {
 	static cos_table_t cosTable{};
 
@@ -454,6 +454,7 @@ export struct CNavPath
 	constexpr auto GetEndpoint() const noexcept -> const Vector& { return m_path[m_segmentCount - 1].pos; }
 
 	constexpr auto Inspect() const noexcept -> std::span<PathSegment const> { return { &m_path.front(), (std::size_t)m_segmentCount}; }
+	constexpr auto Inspect() noexcept -> std::span<PathSegment> { return { &m_path.front(), (std::size_t)m_segmentCount }; }
 
 	// Return true if position is at the end of the path
 	constexpr bool IsAtEnd(const Vector& pos) const noexcept
@@ -1122,8 +1123,8 @@ export struct CImprov : IImprovEvent
 	virtual void OnUpdate(float deltaT) noexcept = 0;	// a less frequent, full update 'tick'
 	virtual void OnUpkeep(float deltaT) noexcept = 0;	// a frequent, lightweight update 'tick'
 	virtual void OnReset() noexcept = 0;				// reset improv to initial state
-	virtual void OnGameEvent(GameEventType event, CBaseEntity* pEntity, CBaseEntity* pOther) = 0;	// invoked when an event occurs in the game
-	virtual void OnTouch(CBaseEntity* pOther) = 0;													// "other" has touched us
+	virtual void OnGameEvent(GameEventType event, CBaseEntity* pEntity, CBaseEntity* pOther) noexcept = 0;	// invoked when an event occurs in the game
+	virtual void OnTouch(CBaseEntity* pOther) noexcept = 0;													// "other" has touched us
 };
 
 

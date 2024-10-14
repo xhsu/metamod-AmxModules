@@ -587,6 +587,16 @@ export constexpr NavDirType DirectionRight(NavDirType dir) noexcept
 #pragma endregion NavDir
 
 #pragma region nav_file
+
+export enum NavErrorType
+{
+	NAV_OK,
+	NAV_CANT_ACCESS_FILE,
+	NAV_INVALID_FILE,
+	NAV_BAD_FILE_VERSION,
+	NAV_CORRUPT_DATA,
+};
+
 // version
 // 1 = hiding spots as plain vector array
 // 2 = hiding spots as HidingSpot objects

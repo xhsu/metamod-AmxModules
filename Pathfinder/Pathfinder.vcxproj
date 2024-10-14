@@ -91,7 +91,9 @@
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ConsoleVar.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Engine.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\FileSystem.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Math.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Message.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Models.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Platform.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Prefab.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Query.ixx" />
@@ -99,6 +101,7 @@
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.Functions.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\VTFH.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Wave.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.util.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\vector.ixx" />
@@ -111,6 +114,7 @@
     <ClCompile Include="..\Common\UtlString.ixx" />
     <ClCompile Include="..\Common\WinAPI.cpp" />
     <ClCompile Include="..\Common\WinAPI.ixx" />
+    <ClCompile Include="BaseMonster.ixx" />
     <ClCompile Include="DllFunctions.cpp" />
     <ClCompile Include="Improvisational.ixx" />
     <ClCompile Include="LocalNav.ixx" />

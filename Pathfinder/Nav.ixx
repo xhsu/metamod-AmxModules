@@ -17,30 +17,6 @@ export import :Const;
 export import :Ladder;
 export import :HidingSpot;
 
-using std::FILE;
-
-
-
-
-
-export enum NavErrorType
-{
-	NAV_OK,
-	NAV_CANT_ACCESS_FILE,
-	NAV_INVALID_FILE,
-	NAV_BAD_FILE_VERSION,
-	NAV_CORRUPT_DATA,
-};
-
-
-
-
-
-
-
-
-
-
 
 
 export using NavAreaList = std::vector<class CNavArea*>;	// Forward declr.
@@ -70,7 +46,7 @@ void EditNavAreasReset() noexcept
 // The CNavAreaGrid is used to efficiently access navigation areas by world position
 // Each cell of the grid contains a list of areas that overlap it
 // Given a world position, the corresponding grid cell is ( x/cellsize, y/cellsize )
-export class CNavAreaGrid
+export class CNavAreaGrid final
 {
 public:
 	CNavAreaGrid() noexcept
@@ -2077,6 +2053,7 @@ export void DestroyNavigationMap() noexcept
 
 	// remove each element of the list and delete them
 	TheNavAreaList.clear();
+	CNavArea::m_nextID = 1;	// reset ID allocator.
 
 	CNavArea::m_isReset = false;
 
@@ -2430,8 +2407,6 @@ export NavErrorType LoadNavigationMap() noexcept
 	// free previous navigation map data
 	DestroyNavigationMap();
 	placeDirectory.Reset();
-
-	CNavArea::m_nextID = 1;
 
 	SteamFile navFile(filename.c_str());
 

@@ -13,7 +13,7 @@ using std::int32_t;
 
 export enum PathTraversAble
 {
-	PTRAVELS_EMPTY,
+	PTRAVELS_NO,
 	PTRAVELS_SLOPE,
 	PTRAVELS_STEP,
 	PTRAVELS_STEPJUMPABLE,
@@ -23,9 +23,9 @@ export using node_index_t = int;
 export inline constexpr node_index_t NODE_INVALID_EMPTY = { -1 };
 
 // instead of MaxSlope, we are using the following max Z component of a unit normal
-inline constexpr float MaxUnitZSlope = 0.7f;
+export inline constexpr float MaxUnitZSlope = 0.7f;
 
-inline constexpr float HOSTAGE_STEPSIZE = 26.0f;
+export inline constexpr float HOSTAGE_STEPSIZE = 26.0f;
 inline constexpr float MAX_HOSTAGES_RESCUE_RADIUS = 256.0f; // rescue zones from legacy info_*
 extern "C++" inline console_variable_t cvar_stepsize{"sv_stepsize", "NaNf",};	// owned by engine.
 
@@ -173,7 +173,7 @@ export struct CLocalNav
 	{
 		for (int nCount = 0; auto&& vecNode : *prgvecNodes)
 		{
-			if (PathTraversable(vecStartingLoc, &vecNode, fNoMonsters) != PTRAVELS_EMPTY)
+			if (PathTraversable(vecStartingLoc, &vecNode, fNoMonsters) != PTRAVELS_NO)
 				return nCount;
 
 			++nCount;
@@ -185,7 +185,7 @@ export struct CLocalNav
 	PathTraversAble PathTraversable(Vector const& vecSource, Vector* pvecDest, TRACE_FL fNoMonsters) const noexcept
 	{
 		TraceResult tr{};
-		auto retval = PTRAVELS_EMPTY;
+		auto retval = PTRAVELS_NO;
 
 		auto vecSrcTmp{ vecSource };
 		auto vecDestTmp = *pvecDest - vecSource;
@@ -208,7 +208,7 @@ export struct CLocalNav
 			{
 				vecDestTmp = tr.vecEndPos;
 
-				if (retval == PTRAVELS_EMPTY)
+				if (retval == PTRAVELS_NO)
 				{
 					retval = PTRAVELS_SLOPE;
 				}
@@ -217,7 +217,7 @@ export struct CLocalNav
 			{
 				if (tr.fStartSolid)
 				{
-					return PTRAVELS_EMPTY;
+					return PTRAVELS_NO;
 				}
 
 				if (tr.pHit && !(std::to_underlying(fNoMonsters) & ignore_monsters) && tr.pHit->v.classname)
@@ -225,7 +225,7 @@ export struct CLocalNav
 					// #PF_LOCAL_HOSTAGE
 					if (FClassnameIs(&tr.pHit->v, "hostage_entity"))
 					{
-						return PTRAVELS_EMPTY;
+						return PTRAVELS_NO;
 					}
 				}
 
@@ -235,7 +235,7 @@ export struct CLocalNav
 				{
 					if (StepTraversable(vecSrcTmp, &vecDestTmp, fNoMonsters, &tr))
 					{
-						if (retval == PTRAVELS_EMPTY)
+						if (retval == PTRAVELS_NO)
 						{
 							retval = PTRAVELS_STEP;
 						}
@@ -244,10 +244,10 @@ export struct CLocalNav
 					{
 						if (!StepJumpable(vecSrcTmp, &vecDestTmp, fNoMonsters, &tr))
 						{
-							return PTRAVELS_EMPTY;
+							return PTRAVELS_NO;
 						}
 
-						if (retval == PTRAVELS_EMPTY)
+						if (retval == PTRAVELS_NO)
 						{
 							retval = PTRAVELS_STEPJUMPABLE;
 						}
@@ -257,10 +257,10 @@ export struct CLocalNav
 				{
 					if (!SlopeTraversable(vecSrcTmp, &vecDestTmp, fNoMonsters, &tr))
 					{
-						return PTRAVELS_EMPTY;
+						return PTRAVELS_NO;
 					}
 
-					if (retval == PTRAVELS_EMPTY)
+					if (retval == PTRAVELS_NO)
 					{
 						retval = PTRAVELS_SLOPE;
 					}
@@ -271,7 +271,7 @@ export struct CLocalNav
 
 			if (PathClear(vecDestTmp, vecDropDest, fNoMonsters, &tr))
 			{
-				return PTRAVELS_EMPTY;
+				return PTRAVELS_NO;
 			}
 
 			if (!tr.fStartSolid)
@@ -444,7 +444,7 @@ export struct CLocalNav
 						}
 					}
 
-					if (PathTraversable(nodeSource->vecLoc, &vecDest, fNoMonsters) != PTRAVELS_EMPTY)
+					if (PathTraversable(nodeSource->vecLoc, &vecDest, fNoMonsters) != PTRAVELS_NO)
 					{
 						nodeCurrent = nodeSource;
 						nindexSource = nindexCurrent;
@@ -456,7 +456,7 @@ export struct CLocalNav
 			bDepth = (nodeCurrent->bDepth + 1) & 0xff;
 		}
 
-		if (PathTraversable(vecSource, &vecDest, fNoMonsters) != PTRAVELS_EMPTY)
+		if (PathTraversable(vecSource, &vecDest, fNoMonsters) != PTRAVELS_NO)
 		{
 			AddNode(nindexSource, vecDest, offsetXAbs, offsetYAbs, bDepth);
 		}
@@ -648,7 +648,7 @@ export struct CLocalNav
 		auto const vecPathDir = (vecStart - vecDest).Normalize();
 		auto vecActualDest = vecDest - (vecPathDir * flTargetRadius);
 
-		if (PathTraversable(vecStart, &vecActualDest, fNoMonsters) == PTRAVELS_EMPTY)
+		if (PathTraversable(vecStart, &vecActualDest, fNoMonsters) == PTRAVELS_NO)
 		{
 			return NODE_INVALID_EMPTY;
 		}
