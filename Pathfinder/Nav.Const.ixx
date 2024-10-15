@@ -459,7 +459,7 @@ export enum NavTraverseType
 	GO_LADDER_DOWN,
 	GO_JUMP,
 
-	NUM_TRAVERSE_TYPES
+	NUM_TRAVERSE_TYPES	// Terminus
 };
 
 export union NavConnect

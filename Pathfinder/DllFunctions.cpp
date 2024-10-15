@@ -498,7 +498,7 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 	else if (szCmd == "ai_move")
 	{
 		if (AI)
-			AI->Plot_PathToLocation(vecTarget);
+			AI->m_Scheduler.Enroll(AI->Task_Plot_WalkOnPath(vecTarget), TASK_PLOT_WALK_TO, true);
 
 		return MRES_SUPERCEDE;
 	}
@@ -523,6 +523,32 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 	{
 		if (AI)
 			AI->m_Scheduler.Enroll(AI->Task_Kill(0.1f), TASK_REMOVE, true);
+
+		return MRES_SUPERCEDE;
+	}
+	else if (szCmd == "ai_qs")
+	{
+		if (AI)
+			AI->m_Scheduler.Enroll(AI->Task_Kill(0.1f), TASK_REMOVE, true);
+
+		auto const vecSrc = pPlayer->pev->origin + pPlayer->pev->view_ofs;
+		auto const vecEnd = vecSrc + pPlayer->pev->v_angle.Front() * 8192.0;
+
+		TraceResult tr{};
+		g_engfuncs.pfnTraceLine(vecSrc, vecEnd, dont_ignore_glass | dont_ignore_monsters, pPlayer->edict(), &tr);
+
+		AI = Prefab_t::Create<CBaseAI>(tr.vecEndPos, Angles{});
+
+		g_engfuncs.pfnTraceLine(
+			pPlayer->pev->origin,
+			pPlayer->pev->origin - Vector::Down() * 80.f,
+			dont_ignore_glass | dont_ignore_monsters,
+			pPlayer->edict(),
+			&tr
+		);
+
+		vecTarget = tr.vecEndPos;
+		AI->m_Scheduler.Enroll(AI->Task_Patrolling(vecTarget), TASK_PLOT_PATROL, true);
 
 		return MRES_SUPERCEDE;
 	}

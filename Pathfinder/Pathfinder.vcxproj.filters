@@ -102,7 +102,7 @@
     <ClCompile Include="Plugin.ixx">
       <Filter>Sources</Filter>
     </ClCompile>
-    <ClCompile Include="Pathfinder.cpp">
+    <ClCompile Include="BaseMonster.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
     <ClCompile Include="Nav.ixx">
@@ -150,6 +150,9 @@
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Math.ixx">
       <Filter>CSDK</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.ixx">
+      <Filter>API.Engine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.hpp">
@@ -169,6 +172,9 @@
     </ClInclude>
     <ClInclude Include="..\..\metamod-p\metamod\metamod_api.hpp">
       <Filter>API.Misc</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp">
+      <Filter>API.Engine</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -12,6 +12,7 @@ import Uranus;
 extern void fw_GameInit_Post() noexcept;
 extern auto fw_Spawn_Post(edict_t* pEdict) noexcept -> qboolean;
 extern META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept;
+extern void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) noexcept;
 extern void fw_ServerDeactivate_Post() noexcept;
 //
 
@@ -137,7 +138,7 @@ static int HookGameDLLExportedFn_Post(DLL_FUNCTIONS *pFunctionTable, int *interf
 		.pfnClientPutInServer	= nullptr,
 		.pfnClientCommand		= nullptr,
 		.pfnClientUserInfoChanged	= nullptr,
-		.pfnServerActivate		= nullptr,
+		.pfnServerActivate		= &fw_ServerActivate_Post,
 		.pfnServerDeactivate	= &fw_ServerDeactivate_Post,
 
 		.pfnPlayerPreThink	= nullptr,

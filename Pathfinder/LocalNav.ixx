@@ -17,6 +17,7 @@ export enum PathTraversAble
 	PTRAVELS_SLOPE,
 	PTRAVELS_STEP,
 	PTRAVELS_STEPJUMPABLE,
+	PTRAVELS_MIDAIR,
 };
 
 export using node_index_t = int;
@@ -42,6 +43,12 @@ export struct localnode_t
 
 export struct CLocalNav
 {
+	CLocalNav() noexcept
+		: m_pTargetEnt{ nullptr }, m_nodeArr{}
+	{
+		//m_hHostages.emplace_back(pOwner);
+		m_nodeArr.resize(0x80);
+	}
 	CLocalNav(CBaseEntity* pOwner) noexcept
 		: m_pOwner{ pOwner }, m_pTargetEnt{ nullptr }, m_nodeArr{}
 	{
@@ -271,7 +278,7 @@ export struct CLocalNav
 
 			if (PathClear(vecDestTmp, vecDropDest, fNoMonsters, &tr))
 			{
-				return PTRAVELS_NO;
+				return m_pOwner->pev->movetype == MOVETYPE_FLY ? PTRAVELS_MIDAIR : PTRAVELS_NO;
 			}
 
 			if (!tr.fStartSolid)

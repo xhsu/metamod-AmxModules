@@ -1148,13 +1148,13 @@ export struct CStuckMonitor
 	}
 
 	// Test if the improv has become stuck
-	void Update(CImprov* improv) noexcept
+	void Update(Vector const& vecCenter, bool bUsingLadder) noexcept
 	{
 		if (m_isStuck)
 		{
 			// improv is stuck - see if it has moved far enough to be considered unstuck
 			constexpr float unstuckRange = 75.0f;
-			if ((improv->GetCentroid() - m_stuckSpot).LengthSquared() > (unstuckRange * unstuckRange))
+			if ((vecCenter - m_stuckSpot).LengthSquared() > (unstuckRange * unstuckRange))
 			{
 				// no longer stuck
 				Reset();
@@ -1166,14 +1166,14 @@ export struct CStuckMonitor
 			// check if improv has become stuck
 
 			// compute average velocity over a short period (for stuck check)
-			auto vel = improv->GetCentroid() - m_lastCentroid;
+			auto vel = vecCenter - m_lastCentroid;
 
 			// if we are jumping, ignore Z
 			//if (improv->IsJumping())
 			//	vel.z = 0.0f;
 
 			// ignore Z unless we are on a ladder (which is only Z)
-			if (!improv->IsUsingLadder())
+			if (!bUsingLadder)
 				vel.z = 0.0f;
 
 			// cannot be Length2D, or will break ladder movement (they are only Z)
@@ -1202,20 +1202,20 @@ export struct CStuckMonitor
 					std::ranges::fold_left(m_avgVel, 0.f, std::plus<>{}) / (float)m_avgVelCount;
 
 				// cannot make this velocity too high, or actors will get "stuck" when going down ladders
-				auto const stuckVel = (improv->IsUsingLadder()) ? 10.0f : 20.0f;
+				auto const stuckVel = bUsingLadder ? 10.0f : 20.0f;
 
 				if (avgVel < stuckVel)
 				{
 					// note when and where we initially become stuck
 					m_stuckTimer.Start();
-					m_stuckSpot = improv->GetCentroid();
+					m_stuckSpot = vecCenter;
 					m_isStuck = true;
 				}
 			}
 		}
 
 		// always need to track this
-		m_lastCentroid = improv->GetCentroid();
+		m_lastCentroid = vecCenter;
 	}
 
 	constexpr bool IsStuck()	const noexcept { return m_isStuck; }
@@ -1371,7 +1371,7 @@ export struct CNavPathFollower
 		}
 
 		// check if improv becomes stuck
-		m_stuckMonitor.Update(m_improv);
+		m_stuckMonitor.Update(m_improv->GetCentroid(), m_improv->IsUsingLadder());
 
 		// if improv has been stuck for too long, give up
 		static constexpr float giveUpTime = 2.0f;
