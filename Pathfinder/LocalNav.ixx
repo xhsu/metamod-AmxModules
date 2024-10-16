@@ -11,7 +11,7 @@ using std::uint8_t;
 using std::uint32_t;
 using std::int32_t;
 
-export enum PathTraversAble
+export enum ETraversable
 {
 	PTRAVELS_NO,
 	PTRAVELS_SLOPE,
@@ -189,7 +189,7 @@ export struct CLocalNav
 		return NODE_INVALID_EMPTY;
 	}
 
-	PathTraversAble PathTraversable(Vector const& vecSource, Vector* pvecDest, TRACE_FL fNoMonsters) const noexcept
+	ETraversable PathTraversable(Vector const& vecSource, Vector* pvecDest, TRACE_FL fNoMonsters) const noexcept
 	{
 		TraceResult tr{};
 		auto retval = PTRAVELS_NO;

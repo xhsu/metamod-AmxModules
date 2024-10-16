@@ -10,10 +10,11 @@
 #include <stdio.h>
 
 #ifdef __INTELLISENSE__
-#include <ranges>
+#include <__msvc_all_public_headers.hpp>
+#else
+import std;
 #endif
 
-import std;
 import hlsdk;
 
 import BaseMonster;
@@ -67,14 +68,15 @@ Task CBaseAI::Task_Move_Turn(bool const bSkipAnim) noexcept
 	auto flTurningTime = std::fmax((float)AMOUNT / 100.f, 0.3f);
 	if (AMOUNT >= 135.0 && !bSkipAnim)
 	{
-		m_Scheduler.Enroll(Task_Anim_TurnThenBackToIdle("180L"), TASK_ANIM_TURNING | TASK_ANIM_INTERCEPTING, true);
-		flTurningTime = m_ModelInfo->at("180L").m_total_length;
+		InsertingAnim(ACT_TURN_LEFT);
 	}
 	else if (AMOUNT <= -135.0 && !bSkipAnim)
 	{
-		m_Scheduler.Enroll(Task_Anim_TurnThenBackToIdle("180R"), TASK_ANIM_TURNING | TASK_ANIM_INTERCEPTING, true);
-		flTurningTime = m_ModelInfo->at("180R").m_total_length;
+		InsertingAnim(ACT_TURN_RIGHT);
 	}
+
+	if (m_pCurInceptingAnim)
+		flTurningTime = m_pCurInceptingAnim->m_total_length;
 
 	for (m_bYawReady = false;;)
 	{
@@ -88,7 +90,7 @@ Task CBaseAI::Task_Move_Turn(bool const bSkipAnim) noexcept
 		if (t >= 1.0)
 			break;
 
-		co_await 0.01f;
+		co_await TaskScheduler::NextFrame::Rank[0];
 	}
 
 	m_bYawReady = true;
@@ -201,7 +203,7 @@ Task CBaseAI::Task_Move_Detour(Vector vecTarget, double flApprox) noexcept
 		flApprox += 1;	// relaxing condition.
 
 	LAB_DETOUR_START:;
-		co_await 0.12f;
+		co_await TaskScheduler::NextFrame::Rank[3];
 
 		m_vecGoal = vecTarget;
 
@@ -224,46 +226,37 @@ Task CBaseAI::Task_Move_Detour(Vector vecTarget, double flApprox) noexcept
 				m_localnav.FindPath(pev->origin, m_vecGoal, 80, dont_ignore_monsters | dont_ignore_glass);
 
 			if (nindexPath == NODE_INVALID_EMPTY)
-				continue;	// retry everything.
+				goto LAB_DETOUR_RETRY;	// retry everything.
 
 			m_localnav.SetupPathNodes(nindexPath, &Nodes);
-			auto const m_nTargetNode = m_localnav.GetFurthestTraversableNode(pev->origin, &Nodes, dont_ignore_monsters | dont_ignore_glass);
-			std::span const rgvecLocalNav{ Nodes.begin(), Nodes.begin() + m_nTargetNode + 1 };
+			auto const m_nTargetNode =
+				m_localnav.GetFurthestTraversableNode(pev->origin, &Nodes, dont_ignore_monsters | dont_ignore_glass);
 
-			// Walking along the local NAV.
-			for (Vector const& vec : rgvecLocalNav | std::views::reverse)
-			{
-				m_Scheduler.Enroll(
-					Task_Move_Walk(
-						vec,
-						(vec - pev->origin).LengthSquared2D() > RUN_DIST_SQ ? ACT_RUN : ACT_WALK,
+			m_Scheduler.Enroll(
+				Task_Move_Walk(
+					Nodes[m_nTargetNode],
+					(Nodes[m_nTargetNode] - pev->origin).LengthSquared2D() > RUN_DIST_SQ ? ACT_RUN : ACT_WALK,
 
-						// when we fall back into local NAV, it normally means something is in the way. Hence we need better pathing precision.
-						std::clamp<double>(flApprox / 2.5, 8.0, 16)
-					), TASK_MOVE_WALKING, true);
-
-				while (m_Scheduler.Exist(TASK_MOVEMENTS_SIMPLE))
-				{
-					co_await TaskScheduler::NextFrame::Rank[3];
-
-					// Wait and check if we are stucked.
-					if (m_StuckMonitor.GetDuration() > 1)
-					{
-						m_StuckMonitor.Reset();
-						goto LAB_DETOUR_RETRY;
-					}
-				}
-			}
+					// when we fall back into local NAV, it normally means something is in the way. Hence we need better pathing precision.
+					std::clamp<double>(flApprox / 2.5, 8.0, 16)
+				), TASK_MOVE_WALKING, true);
 		}
 
 		while (m_Scheduler.Exist(TASK_MOVEMENTS_SIMPLE))
-			co_await TaskScheduler::NextFrame::Rank[3];
+		{
+			co_await 0.12f;
+
+			// Wait and check if we are stucked.
+			if (m_StuckMonitor.GetDuration() > 1)
+			{
+				m_StuckMonitor.Reset();
+				goto LAB_DETOUR_RETRY;
+			}
+		}
 
 		co_await TaskScheduler::NextFrame::Rank[3];
+		goto LAB_DETOUR_START;
 	}
-
-	pev->velocity.x = vecTarget.x - pev->origin.x;
-	pev->velocity.y = vecTarget.y - pev->origin.y;
 
 	co_return;
 }
@@ -409,7 +402,7 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 		if ((pev->origin - vecTarget).LengthSquared2D() < flApprox * flApprox)
 			break;
 
-		co_await 0.01f;
+		co_await TaskScheduler::NextFrame::Rank[4];
 
 		[[unlikely]]
 		if (!m_path.Compute(pev->origin, vecTarget, HostagePathCost{}))
@@ -424,12 +417,59 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 		if (Path.empty())
 			continue;
 
-		co_await 0.01f;
+		co_await TaskScheduler::NextFrame::Rank[4];
 
 		m_vecGoal = Path.front().pos;
 		m_Scheduler.Enroll(Task_Debug_ShowPath(Path, pev->origin), TASK_DEBUG, true);
 
-		co_await 0.01f;
+		co_await TaskScheduler::NextFrame::Rank[4];
+
+	LAB_WOP_NEXT:;
+		switch (Path.front().how)
+		{
+		case GO_LADDER_UP:
+		case GO_LADDER_DOWN:
+		{
+			auto const nextIt = Path.begin() + 1;
+			Climb(Path.front(), nextIt == Path.end() ? nullptr : nextIt->area);
+			break;	// switch
+		}
+
+		default:
+			Detour(Path.front().pos, flApprox);	// the accuracy doesn't matter anymore, we have local NAV.
+			break;	// switch
+		}
+
+		auto const pSave{ std::addressof(Path.front()) };
+		while (m_Scheduler.Exist(TASK_MOVEMENTS_SIMPLE | TASK_MOVEMENTS_COMPLICATE))
+		{
+			co_await 0.11f;
+
+			// Now we are free, let's simplify paths.
+			Path = SimplifiedPath(dont_ignore_monsters | dont_ignore_glass, Path);
+
+			auto const bSimplified = std::addressof(Path.front()) != pSave;
+			if (bSimplified)
+				m_Scheduler.Enroll(Task_Debug_ShowPath(Path, pev->origin), TASK_DEBUG, true);
+
+			co_await TaskScheduler::NextFrame::Rank[3];
+
+			// Check whether the simplified path is better than our detoured local NAV.
+			if (bSimplified &&
+				PathTraversable(pev->origin, &Path.front().pos, dont_ignore_glass | dont_ignore_monsters) != PTRAVELS_NO)
+			{
+				goto LAB_WOP_NEXT;
+			}
+
+			co_await TaskScheduler::NextFrame::Rank[3];
+
+			// Wait and check if we are stucked.
+			if (m_StuckMonitor.GetDuration() > 1.f && !m_Scheduler.Exist(TASK_MOVE_LADDER))
+			{
+				m_StuckMonitor.Reset();
+				goto LAB_RECOMPUTE_PATH;
+			}
+		}
 
 		// Attempt to walk with the current path.
 		for (auto it = Path.begin(); it != Path.end(); /* do nothing */)
@@ -440,12 +480,7 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 			case GO_LADDER_DOWN:
 			{
 				auto const nextIt = it + 1;
-
-				m_Scheduler.Enroll(
-					Task_Move_Ladder(it->ladder, it->how, nextIt == Path.end() ? nullptr : nextIt->area),
-					TASK_MOVE_LADDER,
-					true
-				);
+				Climb(*it, nextIt == Path.end() ? nullptr : nextIt->area);
 				break;	// switch
 			}
 
@@ -454,8 +489,8 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 				break;	// switch
 			}
 
-			auto bNewPath = false;
-			auto const pSave = std::addressof(*it);
+			auto bSimplified{ false };
+			auto const pSave{ std::addressof(*it) };
 
 			while (m_Scheduler.Exist(TASK_MOVEMENTS_SIMPLE | TASK_MOVEMENTS_COMPLICATE))
 			{
@@ -464,9 +499,18 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 				// Now we are free, let's simplify paths.
 				Path = SimplifiedPath(dont_ignore_monsters | dont_ignore_glass, Path.subspan(it - Path.begin()));
 				it = Path.begin();
-				bNewPath = true;
+				bSimplified = std::addressof(*it) != pSave;
 
 				m_Scheduler.Enroll(Task_Debug_ShowPath(Path, pev->origin), TASK_DEBUG, true);
+
+				co_await TaskScheduler::NextFrame::Rank[3];
+
+				// #CONTINUE_FROM_HERE
+				// Check whether the simplified path is better than our detoured local NAV.
+				if (bSimplified)
+				{
+
+				}
 
 				co_await TaskScheduler::NextFrame::Rank[3];
 
@@ -485,7 +529,7 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 			if (std::addressof(*it) == pSave)
 				++it;
 
-			co_await TaskScheduler::NextFrame::Rank[3];
+			co_await TaskScheduler::NextFrame::Rank[4];
 		}
 
 	LAB_RECOMPUTE_PATH:;
@@ -499,6 +543,7 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 
 Task CBaseAI::Task_Debug_ShowPath(std::span<PathSegment const> segments, Vector const vecSrc) noexcept
 {
+#ifdef _DEBUG
 	static constexpr Vector VEC_OFS{ 0, 0, VEC_DUCK_HULL_MAX.z / 2.f };
 	static constexpr std::array<std::string_view, NUM_TRAVERSE_TYPES + 1> TRAV_MEANS =
 	{
@@ -599,6 +644,7 @@ Task CBaseAI::Task_Debug_ShowPath(std::span<PathSegment const> segments, Vector 
 			5, 0, 0xFF, 0x9C
 		);
 	}
+#endif
 
 	co_return;
 }

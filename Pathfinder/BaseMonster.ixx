@@ -40,8 +40,8 @@ export enum ETaskIdMonster : std::uint64_t
 	TASK_MOVE_LADDER = 1ull << 12,
 	TASK_MOVEMENTS_COMPLICATE = TASK_MOVE_DETOUR | TASK_MOVE_LADDER,
 
-	TASK_ANIM_TURNING = 1ull << 16,
-	TASK_ANIM_INTERCEPTING = 1ull << 17,
+	TASK_ANIM_INTERCEPTING = 1ull << 16,
+	TASK_ANIMATIONS = TASK_ANIM_INTERCEPTING,
 
 	TASK_PLOT_WALK_TO = 1ull << 24,
 	TASK_PLOT_PATROL = 1ull << 25,
@@ -63,7 +63,7 @@ export struct CBaseAI : Prefab_t
 
 	Vector m_vecGoal{};
 	EHANDLE<CBaseEntity> m_pTargetEnt{};
-	CNavArea* m_CurArea{};
+	seq_info_t const* m_pCurInceptingAnim{};	// Promised by: InsertingAnim()
 	bool m_bYawReady : 1 { false };
 	mutable bool m_fTargetEntHit : 1 { false };
 
@@ -111,9 +111,12 @@ export struct CBaseAI : Prefab_t
 
 		UTIL_SetController(edict(), 0, 0);
 
+		m_Scheduler.Policy() = ESchedulerPolicy::UNORDERED;
+
 		m_Scheduler.Enroll(Task_Init(), TASK_INIT, true);
 //		m_Scheduler.Enroll(Task_Kill(), TASK_REMOVE, true);
 		m_Scheduler.Enroll(Task_StuckMonitor(), TASK_STUCKMONITOR, true);
+		m_Scheduler.Enroll(Task_Event_Dispatch());
 
 		m_localnav.m_pOwner = this;
 	}
@@ -141,7 +144,7 @@ export struct CBaseAI : Prefab_t
 			(where - pev->origin).Yaw()
 		);
 	}
-	virtual void ClearFaceTo() noexcept { m_Scheduler.Delist(TASK_ANIM_TURNING | TASK_MOVE_TURNING); }
+	virtual void ClearFaceTo() noexcept { m_Scheduler.Delist(TASK_MOVE_TURNING); }
 
 	virtual const Vector& GetFeet() const noexcept { return pev->origin; };		// return position of "feet" - point below centroid of improv at feet level
 	virtual Vector GetCentroid() const noexcept { return pev->origin + (VEC_HUMAN_HULL_MIN + VEC_HUMAN_HULL_MAX) / 2.f; };
@@ -151,6 +154,7 @@ export struct CBaseAI : Prefab_t
 
 	// Util
 
+	// @promise: m_pCurInceptingAnim
 	// @awaiting: TASK_ANIM_INTERCEPTING
 	__forceinline void InsertingAnim(Activity activity) noexcept
 	{
@@ -163,7 +167,7 @@ export struct CBaseAI : Prefab_t
 		{
 			pev->sequence = it->second.m_iSeqIdx;
 			pev->animtime = gpGlobals->time;
-			pev->framerate = 1.f;
+			pev->framerate = it->second.m_flFrameRate;
 			pev->frame = 0;
 
 			return &it->second;
@@ -309,6 +313,16 @@ export struct CBaseAI : Prefab_t
 		);
 	}
 
+	// @awaiting: TASK_MOVE_LADDER
+	__forceinline void Climb(PathSegment const& segment, CNavArea const* pNextArea = nullptr) noexcept
+	{
+		m_Scheduler.Enroll(
+			Task_Move_Ladder(segment.ladder, segment.how, pNextArea),
+			TASK_MOVE_LADDER,
+			true
+		);
+	}
+
 	// Path Verification
 
 	auto SimplifiedPath(TRACE_FL fNoMonsters, std::span<PathSegment> Path = {}) noexcept -> decltype(this->m_path.Inspect())
@@ -345,7 +359,7 @@ export struct CBaseAI : Prefab_t
 		// Counting down from the farthest.
 		for (nCount = SimplifiableSegments.size() - 1; auto&& Seg : SimplifiableSegments | std::views::reverse)
 		{
-			PathTraversAble res{ PTRAVELS_NO };
+			ETraversable res{ PTRAVELS_NO };
 			switch (Seg.how)
 			{
 			case GO_LADDER_UP:
@@ -377,7 +391,7 @@ export struct CBaseAI : Prefab_t
 		return Path;
 	}
 
-	PathTraversAble PathTraversable(Vector const& vecSource, Vector* pvecDest, TRACE_FL fNoMonsters) const noexcept
+	ETraversable PathTraversable(Vector const& vecSource, Vector* pvecDest, TRACE_FL fNoMonsters) const noexcept
 	{
 		TraceResult tr{};
 		auto retval = PTRAVELS_NO;
@@ -685,14 +699,14 @@ export struct CBaseAI : Prefab_t
 	{
 		for (;;)
 		{
-			co_await TaskScheduler::NextFrame::Rank.back();
+			co_await 0.1f;
 
 			m_StuckMonitor.Update(
 				GetCentroid(),
 				m_Scheduler.Exist(TASK_MOVE_LADDER)
 			);
 
-			if (m_Scheduler.Exist(TASK_ANIM_INTERCEPTING | TASK_ANIM_TURNING))
+			if (m_Scheduler.Exist(TASK_ANIM_INTERCEPTING) || pev->maxspeed < 21.f)
 				m_StuckMonitor.Reset();
 		}
 	}
@@ -703,23 +717,6 @@ export struct CBaseAI : Prefab_t
 	Task Task_Move_Walk(Vector const vecTarget, Activity iMoveType = ACT_RUN, double const flApprox = VEC_HUMAN_HULL_MAX.x + 1.0) noexcept;
 	Task Task_Move_Detour(Vector const vecTarget, double const flApprox = VEC_HUMAN_HULL_MAX.x + 1.0) noexcept;
 	Task Task_Move_Ladder(CNavLadder const* ladder, NavTraverseType how, CNavArea const* pNextArea = nullptr) noexcept;
-
-	Task Task_Anim_TurnThenBackToIdle(std::string_view szInitialAnim) noexcept
-	{
-		auto pInfo = PlayAnim(szInitialAnim);
-		if (!pInfo)
-			co_return;
-
-		co_await pInfo->m_total_length;
-
-		pInfo = PlayAnim("CombatIdle");
-		if (!pInfo)
-			co_return;
-
-		co_await pInfo->m_total_length;
-
-//		PlayAnim("Idle2");
-	}
 
 	Task Task_Patrolling(Vector const vecTarget) noexcept
 	{
@@ -745,28 +742,42 @@ export struct CBaseAI : Prefab_t
 
 	Task Task_Anim_Intercepting(Activity activity) noexcept
 	{
-		seq_info_t const* seq{};
+		m_pCurInceptingAnim = nullptr;
 
 		if (!m_ActSequences[activity].empty())
-			seq = UTIL_GetRandomOne(m_ActSequences[activity]);
+			m_pCurInceptingAnim = UTIL_GetRandomOne(m_ActSequences[activity]);
 
-		if (!seq)
+		if (!m_pCurInceptingAnim)
 			co_return;
 
-		pev->sequence = seq->m_iSeqIdx;
+		pev->sequence = m_pCurInceptingAnim->m_iSeqIdx;
 		pev->animtime = gpGlobals->time;
-		pev->framerate = seq->m_flFrameRate;
+		pev->framerate = m_pCurInceptingAnim->m_flFrameRate;
 		pev->frame = 0;
 
-		pev->maxspeed = seq->m_flGroundSpeed;
+		pev->maxspeed = m_pCurInceptingAnim->m_flGroundSpeed;
 
 		// keep the task alive, occupying the channel.
-		co_await seq->m_total_length;
+		co_await m_pCurInceptingAnim->m_total_length;
 
 		co_return;
 	}
 
 	Task Task_Debug_ShowPath(std::span<PathSegment const> segments, Vector const vecSrc) noexcept;
+
+	Task Task_Event_Dispatch() noexcept
+	{
+		for (;;)
+		{
+			co_await TaskScheduler::NextFrame::Rank.back();
+
+			//g_engfuncs.pfnServerPrint(
+			//	std::format("{}\n", pev->frame).c_str()
+			//);
+		}
+
+		co_return;
+	}
 
 	// Static Precache
 
