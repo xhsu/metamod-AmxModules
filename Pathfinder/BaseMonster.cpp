@@ -26,6 +26,35 @@ import LocalNav;
 
 import UtlRandom;
 
+
+
+inline void UTIL_DrawBeamPoints(Vector const& vecStart, Vector const& vecEnd,
+	int iLifetime, std::uint8_t bRed, std::uint8_t bGreen, std::uint8_t bBlue) noexcept
+{
+	g_engfuncs.pfnMessageBegin(MSG_PVS, SVC_TEMPENTITY, vecStart, nullptr);
+	g_engfuncs.pfnWriteByte(TE_BEAMPOINTS);
+	g_engfuncs.pfnWriteCoord(vecStart.x);
+	g_engfuncs.pfnWriteCoord(vecStart.y);
+	g_engfuncs.pfnWriteCoord(vecStart.z);
+	g_engfuncs.pfnWriteCoord(vecEnd.x);
+	g_engfuncs.pfnWriteCoord(vecEnd.y);
+	g_engfuncs.pfnWriteCoord(vecEnd.z);
+	g_engfuncs.pfnWriteShort(g_engfuncs.pfnModelIndex("sprites/smoke.spr"));
+	g_engfuncs.pfnWriteByte(0);	// starting frame
+	g_engfuncs.pfnWriteByte(0);	// frame rate
+	g_engfuncs.pfnWriteByte(iLifetime);
+	g_engfuncs.pfnWriteByte(10);	// width
+	g_engfuncs.pfnWriteByte(0);	// noise
+	g_engfuncs.pfnWriteByte(bRed);
+	g_engfuncs.pfnWriteByte(bGreen);
+	g_engfuncs.pfnWriteByte(bBlue);
+	g_engfuncs.pfnWriteByte(255);	// brightness
+	g_engfuncs.pfnWriteByte(0);	// scroll speed
+	g_engfuncs.pfnMessageEnd();
+}
+
+// Single action
+
 Task CBaseAI::Task_Move_Turn(bool const bSkipAnim) noexcept
 {
 	auto const START = pev->angles.yaw;
@@ -74,7 +103,7 @@ Task CBaseAI::Task_Move_Turn(bool const bSkipAnim) noexcept
 	pev->ideal_yaw = pev->angles.yaw;
 }
 
-Task CBaseAI::Task_Move_Walk(Vector const vecTarget, Activity iMoveType, double const flApprox, bool const bShouldPlayIdleAtEnd) noexcept
+Task CBaseAI::Task_Move_Walk(Vector const vecTarget, Activity iMoveType, double const flApprox) noexcept
 {
 	Vector vecDiff{};
 	Vector2D vecDirFlr{};
@@ -85,10 +114,6 @@ Task CBaseAI::Task_Move_Walk(Vector const vecTarget, Activity iMoveType, double 
 	for (;;)
 	{
 		co_await TaskScheduler::NextFrame::Rank[0];
-
-		// We reach the dest, watch out for div by zero!
-		if (vecTarget.Approx(pev->origin, 0.5f))
-			break;
 
 		vecDiff = (vecTarget - pev->origin);
 		vecDirFlr = vecDiff.Make2D().Normalize();
@@ -109,6 +134,7 @@ Task CBaseAI::Task_Move_Walk(Vector const vecTarget, Activity iMoveType, double 
 			co_await 0.1f;
 		}
 
+		// watch out for div by zero!
 		if (vecDiff.LengthSquared2D() > (flApprox * flApprox))
 		{
 			// LUNA:
@@ -143,6 +169,9 @@ Task CBaseAI::Task_Move_Walk(Vector const vecTarget, Activity iMoveType, double 
 					break;
 				}
 			}
+			// Somehow this is unreachable.
+			else
+				co_return;
 		}
 		else
 		{
@@ -156,12 +185,87 @@ Task CBaseAI::Task_Move_Walk(Vector const vecTarget, Activity iMoveType, double 
 	// Clear vel. As the vel might be NaNF when close the end.
 	// LUNA: this was consider as a physical change as well?? It will cause anim interpolation dead!
 //	pev->velocity = g_vecZero;
+}
 
-	if (bShouldPlayIdleAtEnd)
+Task CBaseAI::Task_Move_Detour(Vector vecTarget, double flApprox) noexcept
+{
+	static constexpr auto RUN_DIST_SQ = 270.0 * 270.0;
+
+	std::vector<Vector> Nodes{};
+
+	goto LAB_DETOUR_START;
+
+	for (;;)
 	{
-		co_await 0.02f;	// longer for interpo?
-		PlayAnim(ACT_IDLE);
+	LAB_DETOUR_RETRY:;
+		flApprox += 1;	// relaxing condition.
+
+	LAB_DETOUR_START:;
+		co_await 0.12f;
+
+		m_vecGoal = vecTarget;
+
+		// Close enough
+		if ((vecTarget - pev->origin).LengthSquared2D() < flApprox * flApprox)
+			break;
+
+		if (PathTraversable(pev->origin, &vecTarget, dont_ignore_monsters | dont_ignore_glass) != PTRAVELS_NO)
+		{
+			m_Scheduler.Enroll(
+				Task_Move_Walk(
+					vecTarget,
+					(vecTarget - pev->origin).LengthSquared2D() > RUN_DIST_SQ ? ACT_RUN : ACT_WALK,
+					flApprox
+				), TASK_MOVE_WALKING, true);
+		}
+		else
+		{
+			auto const nindexPath =
+				m_localnav.FindPath(pev->origin, m_vecGoal, 80, dont_ignore_monsters | dont_ignore_glass);
+
+			if (nindexPath == NODE_INVALID_EMPTY)
+				continue;	// retry everything.
+
+			m_localnav.SetupPathNodes(nindexPath, &Nodes);
+			auto const m_nTargetNode = m_localnav.GetFurthestTraversableNode(pev->origin, &Nodes, dont_ignore_monsters | dont_ignore_glass);
+			std::span const rgvecLocalNav{ Nodes.begin(), Nodes.begin() + m_nTargetNode + 1 };
+
+			// Walking along the local NAV.
+			for (Vector const& vec : rgvecLocalNav | std::views::reverse)
+			{
+				m_Scheduler.Enroll(
+					Task_Move_Walk(
+						vec,
+						(vec - pev->origin).LengthSquared2D() > RUN_DIST_SQ ? ACT_RUN : ACT_WALK,
+
+						// when we fall back into local NAV, it normally means something is in the way. Hence we need better pathing precision.
+						std::clamp<double>(flApprox / 2.5, 8.0, 16)
+					), TASK_MOVE_WALKING, true);
+
+				while (m_Scheduler.Exist(TASK_MOVE_WALKING | TASK_MOVE_TURNING))
+				{
+					co_await TaskScheduler::NextFrame::Rank[3];
+
+					// Wait and check if we are stucked.
+					if (m_StuckMonitor.GetDuration() > 1)
+					{
+						m_StuckMonitor.Reset();
+						goto LAB_DETOUR_RETRY;
+					}
+				}
+			}
+		}
+
+		while (m_Scheduler.Exist(TASK_MOVE_WALKING | TASK_MOVE_TURNING))
+			co_await TaskScheduler::NextFrame::Rank[3];
+
+		co_await TaskScheduler::NextFrame::Rank[3];
 	}
+
+	pev->velocity.x = vecTarget.x - pev->origin.x;
+	pev->velocity.y = vecTarget.y - pev->origin.y;
+
+	co_return;
 }
 
 Task CBaseAI::Task_Move_Ladder(CNavLadder const* ladder, NavTraverseType how, CNavArea const* pNextArea) noexcept
@@ -198,17 +302,21 @@ Task CBaseAI::Task_Move_Ladder(CNavLadder const* ladder, NavTraverseType how, CN
 
 		} while (tr.fAllSolid || tr.fStartSolid || tr.flFraction < 1.f);
 
+		auto const vecLadderTop{ m_vecGoal };
+//		Detour(m_vecGoal, 1);	// We have NO torlerance when ladders involved.
+//		while (m_Scheduler.Exist(TASK_MOVE_DETOUR))
+//			co_await TaskScheduler::NextFrame::Rank[4];
+
 		m_Scheduler.Enroll(
 			Task_Move_Walk(
 				m_vecGoal,
-				ACT_WALK,
-				1.0,		// We have NO torlerance when ladders involved.
-				false
+				(m_vecGoal - pev->origin).LengthSquared2D() > (270.0 * 270.0) ? ACT_RUN : ACT_WALK,
+				1.0	// We have NO torlerance when ladders involved.
 			), TASK_MOVE_WALKING, true);
 
-		while (m_Scheduler.Exist(TASK_MOVE_WALKING))
+		while (m_Scheduler.Exist(TASK_MOVE_WALKING | TASK_MOVE_TURNING))
 		{
-			if ((pev->origin - m_vecGoal).LengthSquared2D() < 36.0 * 36.0)
+			if ((pev->origin - vecLadderTop).LengthSquared2D() < 36.0 * 36.0)
 				pev->movetype = MOVETYPE_FLY;
 
 			co_await TaskScheduler::NextFrame::Rank[0];
@@ -222,7 +330,7 @@ Task CBaseAI::Task_Move_Ladder(CNavLadder const* ladder, NavTraverseType how, CN
 		while (m_Scheduler.Exist(TASK_ANIM_INTERCEPTING))
 			co_await TaskScheduler::NextFrame::Rank[0];
 
-		pev->origin = m_vecGoal;
+		pev->origin = vecLadderTop;
 		pev->movetype = MOVETYPE_STEP;
 
 		// Persisting climbing anim
@@ -230,8 +338,7 @@ Task CBaseAI::Task_Move_Ladder(CNavLadder const* ladder, NavTraverseType how, CN
 
 		while (ladder->m_bottom.z + HalfHumanHeight < GetFeet().z)
 		{
-//			pev->velocity.x = ladder->m_dirVector.x * -80.f;	// We are pushing AI towards the dir of the ladder.
-//			pev->velocity.y = ladder->m_dirVector.y * -80.f;
+			// We should not push AI in XY direction here, or it will leave the ladder area.
 			pev->velocity.z = -100.f;
 
 			co_await TaskScheduler::NextFrame::Rank[0];
@@ -239,18 +346,12 @@ Task CBaseAI::Task_Move_Ladder(CNavLadder const* ladder, NavTraverseType how, CN
 	}
 	else if (how == GO_LADDER_UP)
 	{
-		m_vecGoal = ladder->m_bottom + Vector{ ladder->m_dirVector, 0 } *17;
+		m_vecGoal = ladder->m_bottom + Vector{ ladder->m_dirVector, 0 } * 17;
 
-		m_Scheduler.Enroll(
-			Task_Move_Walk(
-				m_vecGoal,
-				ACT_WALK,
-				1.0,		// We have NO torlerance when ladders involved.
-				false
-			), TASK_MOVE_WALKING, true);
-
-		while (m_Scheduler.Exist(TASK_MOVE_WALKING))
-			co_await TaskScheduler::NextFrame::Rank[0];
+		// Go and find the bottom of the ladder
+		Detour(m_vecGoal, 4);
+		while (m_Scheduler.Exist(TASK_MOVE_DETOUR))
+			co_await TaskScheduler::NextFrame::Rank[4];
 
 		Turn((-ladder->m_dirVector).Yaw(), true);
 
@@ -296,50 +397,20 @@ Task CBaseAI::Task_Move_Ladder(CNavLadder const* ladder, NavTraverseType how, CN
 	co_return;
 }
 
-Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget) noexcept
+// Plots
+
+Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noexcept
 {
 	std::vector<Vector> Nodes{};
 
 	for (;;)
 	{
 		// We arrived.
-		if ((pev->origin - vecTarget).LengthSquared2D() < 17.0 * 17.0)
+		if ((pev->origin - vecTarget).LengthSquared2D() < flApprox * flApprox)
 			break;
 
 		co_await 0.01f;
 
-/*
-	LAB_LOCAL_NAV:;
-		auto const nindexPath =
-			m_localnav.FindPath(pev->origin, vecTarget, 50, dont_ignore_monsters | dont_ignore_glass);
-
-		if (nindexPath != NODE_INVALID_EMPTY)
-		{
-			m_localnav.SetupPathNodes(nindexPath, &Nodes);
-			auto const m_nTargetNode = m_localnav.GetFurthestTraversableNode(pev->origin, &Nodes, dont_ignore_monsters | dont_ignore_glass);
-
-			m_Scheduler.Enroll(
-				Task_Move_Walk(
-					Nodes[m_nTargetNode],
-					(Nodes[m_nTargetNode] - pev->origin).LengthSquared2D() > (270.0 * 270.0) ? ACT_RUN : ACT_WALK,
-					1
-				), TASK_MOVE_WALKING, true);
-
-			while (m_Scheduler.Exist(TASK_MOVEMENTS))
-			{
-				co_await 0.03f;
-
-				// Retry local nav.
-				if (m_StuckMonitor.GetDuration() > 1)
-				{
-					m_StuckMonitor.Reset();
-					goto LAB_CZBOT_NAV;
-				}
-			}
-		}
-*/
-
-	LAB_CZBOT_NAV:;
 		[[unlikely]]
 		if (!m_path.Compute(pev->origin, vecTarget, HostagePathCost{}))
 		{
@@ -347,7 +418,7 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget) noexcept
 			continue;
 		}
 
-		auto const Path =
+		auto Path =
 			SimplifiedPath(dont_ignore_glass | dont_ignore_monsters);
 
 		if (Path.empty())
@@ -360,10 +431,8 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget) noexcept
 
 		co_await 0.01f;
 
-		auto const itLast = Path.end() - 1;	// Not end, still accessable.
-
 		// Attempt to walk with the current path.
-		for (auto it = Path.begin(); it != Path.end(); ++it)
+		for (auto it = Path.begin(); it != Path.end(); /* do nothing */)
 		{
 			switch (it->how)
 			{
@@ -381,61 +450,25 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget) noexcept
 			}
 
 			default:
-			{
-				if (PathTraversable(pev->origin, &it->pos, dont_ignore_monsters | dont_ignore_glass) != PTRAVELS_NO)
-				{
-					m_Scheduler.Enroll(
-						Task_Move_Walk(
-							it->pos,
-							(it->pos - pev->origin).LengthSquared2D() > (270.0 * 270.0) ? ACT_RUN : ACT_WALK,
-							VEC_HUMAN_HULL_MAX.x,
-							it == itLast
-						), TASK_MOVE_WALKING, true);
-				}
-				else
-				{
-				LAB_LOCAL_NAV:;
-					auto const nindexPath =
-						m_localnav.FindPath(pev->origin, it->pos, 50, dont_ignore_monsters | dont_ignore_glass);
-
-					if (nindexPath == NODE_INVALID_EMPTY)
-						goto LAB_RECOMPUTE_PATH;
-
-					m_localnav.SetupPathNodes(nindexPath, &Nodes);
-					auto const m_nTargetNode = m_localnav.GetFurthestTraversableNode(pev->origin, &Nodes, dont_ignore_monsters | dont_ignore_glass);
-					std::span const rgvecLocalNav{ Nodes.begin(), Nodes.begin() + m_nTargetNode + 1 };
-
-					// Walking along the local NAV.
-					for (Vector const& vec : rgvecLocalNav | std::views::reverse)
-					{
-						m_Scheduler.Enroll(
-							Task_Move_Walk(
-								vec,
-								(vec - pev->origin).LengthSquared2D() > (270.0 * 270.0) ? ACT_RUN : ACT_WALK,
-								VEC_HUMAN_HULL_MAX.x,
-								false
-							), TASK_MOVE_WALKING, true);
-
-						while (m_Scheduler.Exist(TASK_MOVEMENTS))
-						{
-							co_await TaskScheduler::NextFrame::Rank[3];
-
-							// Wait and check if we are stucked.
-							if (m_StuckMonitor.GetDuration() > 1 && !m_Scheduler.Exist(TASK_MOVE_LADDER))
-							{
-								m_StuckMonitor.Reset();
-								goto LAB_LOCAL_NAV;
-							}
-						}
-					}
-				}
+				Detour(it->pos, flApprox);	// the accuracy doesn't matter anymore, we have local NAV.
 				break;	// switch
 			}
-			}
+
+			auto bNewPath = false;
+			auto const pSave = std::addressof(*it);
 
 			while (m_Scheduler.Exist(TASK_MOVEMENTS))
 			{
-				co_await(it == itLast ? 1.f : TaskScheduler::NextFrame::Rank[3]);
+				co_await 0.11f;
+
+				// Now we are free, let's simplify paths.
+				Path = SimplifiedPath(dont_ignore_monsters | dont_ignore_glass, Path.subspan(it - Path.begin()));
+				it = Path.begin();
+				bNewPath = true;
+
+				m_Scheduler.Enroll(Task_Debug_ShowPath(Path, pev->origin), TASK_DEBUG, true);
+
+				co_await TaskScheduler::NextFrame::Rank[3];
 
 				// Wait and check if we are stucked.
 				if (m_StuckMonitor.GetDuration() > 1 && !m_Scheduler.Exist(TASK_MOVE_LADDER))
@@ -444,6 +477,13 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget) noexcept
 					goto LAB_RECOMPUTE_PATH;
 				}
 			}
+
+			if (Path.empty())
+				goto LAB_RECOMPUTE_PATH;
+
+			// Only increase iterator if we doesn't successfully simplify the route.
+			if (std::addressof(*it) == pSave)
+				++it;
 
 			co_await TaskScheduler::NextFrame::Rank[3];
 		}
@@ -455,6 +495,115 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget) noexcept
 	co_return;
 }
 
+// Debug
+
+Task CBaseAI::Task_Debug_ShowPath(std::span<PathSegment const> segments, Vector const vecSrc) noexcept
+{
+	static constexpr Vector VEC_OFS{ 0, 0, VEC_DUCK_HULL_MAX.z / 2.f };
+	static constexpr std::array<std::string_view, NUM_TRAVERSE_TYPES + 1> TRAV_MEANS =
+	{
+		"GO_NORTH",
+		"GO_EAST",
+		"GO_SOUTH",
+		"GO_WEST",
+		"GO_LADDER_UP",
+		"GO_LADDER_DOWN",
+		"GO_JUMP",
+		"TERMINUS",
+	};
+
+	g_engfuncs.pfnServerPrint(
+		std::format("{} Segments in total.\n", segments.size()).c_str()
+	);
+
+	for (auto&& Seg : segments)
+	{
+		g_engfuncs.pfnServerPrint(
+			std::format("    {}@ {: <6.1f}{: <6.1f}{: <6.1f}\n", TRAV_MEANS[Seg.how], Seg.pos.x, Seg.pos.y, Seg.pos.z).c_str()
+		);
+	}
+
+	for (;;)
+	{
+		co_await 0.01f;	// avoid inf loop.
+
+		if (segments.size() >= 1)
+		{
+			UTIL_DrawBeamPoints(
+				vecSrc + VEC_OFS,
+				segments.front().pos + VEC_OFS,
+				5, 255, 255, 255
+			);
+		}
+
+		for (auto&& [src, dest] : segments | std::views::adjacent<2>)
+		{
+			// Connect regular path with ladders.
+			switch (src.how)
+			{
+			case GO_LADDER_DOWN:
+				UTIL_DrawBeamPoints(
+					src.ladder->m_top,
+					src.ladder->m_bottom,
+					5, 128, 0, 0
+				);
+				UTIL_DrawBeamPoints(
+					src.ladder->m_bottom,
+					dest.pos + VEC_OFS,
+					5, 255, 255, 255
+				);
+				break;
+
+			case GO_LADDER_UP:
+				UTIL_DrawBeamPoints(
+					src.ladder->m_bottom,
+					src.ladder->m_top,
+					5, 0, 128, 0
+				);
+				UTIL_DrawBeamPoints(
+					src.ladder->m_top,
+					dest.pos + VEC_OFS,
+					5, 255, 255, 255
+				);
+				break;
+
+			case GO_JUMP:
+				UTIL_DrawBeamPoints(
+					src.pos + VEC_OFS,
+					dest.pos + VEC_OFS,
+					5, 0, 0, 128
+				);
+				break;
+
+			default:
+				UTIL_DrawBeamPoints(
+					src.pos + VEC_OFS,
+					dest.pos + VEC_OFS,
+					5, 255, 255, 255
+				);
+				break;
+			}
+
+			co_await 0.01f;
+		}
+
+		UTIL_DrawBeamPoints(
+			m_vecGoal,
+			{ m_vecGoal.x, m_vecGoal.y, m_vecGoal.z + 36.f },
+			5, 0x09, 0x10, 0x57
+		);
+
+		UTIL_DrawBeamPoints(
+			pev->origin,
+			pev->origin + pev->angles.Front() * (float)cvar_stepsize,
+			5, 0, 0xFF, 0x9C
+		);
+	}
+
+	co_return;
+}
+
+// Static Precache
 
 void CBaseAI::PrepareActivityInfo(std::string_view szModel) noexcept
 {

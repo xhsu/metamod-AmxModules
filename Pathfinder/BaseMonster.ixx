@@ -33,8 +33,9 @@ export enum ETaskIdMonster : std::uint64_t
 
 	TASK_MOVE_TURNING = 1ull << 8,
 	TASK_MOVE_WALKING = 1ull << 9,
-	TASK_MOVE_LADDER = 1ull << 10,
-	TASK_MOVEMENTS = TASK_MOVE_TURNING | TASK_MOVE_WALKING | TASK_MOVE_LADDER,
+	TASK_MOVE_DETOUR = 1ull << 10,
+	TASK_MOVE_LADDER = 1ull << 11,
+	TASK_MOVEMENTS = TASK_MOVE_TURNING | TASK_MOVE_WALKING | TASK_MOVE_DETOUR | TASK_MOVE_LADDER,
 
 	TASK_ANIM_TURNING = 1ull << 16,
 	TASK_ANIM_INTERCEPTING = 1ull << 17,
@@ -44,31 +45,6 @@ export enum ETaskIdMonster : std::uint64_t
 };
 
 
-
-inline void UTIL_DrawBeamPoints(Vector const& vecStart, Vector const& vecEnd,
-	int iLifetime, std::uint8_t bRed, std::uint8_t bGreen, std::uint8_t bBlue) noexcept
-{
-	g_engfuncs.pfnMessageBegin(MSG_PVS, SVC_TEMPENTITY, vecStart, nullptr);
-	g_engfuncs.pfnWriteByte(TE_BEAMPOINTS);
-	g_engfuncs.pfnWriteCoord(vecStart.x);
-	g_engfuncs.pfnWriteCoord(vecStart.y);
-	g_engfuncs.pfnWriteCoord(vecStart.z);
-	g_engfuncs.pfnWriteCoord(vecEnd.x);
-	g_engfuncs.pfnWriteCoord(vecEnd.y);
-	g_engfuncs.pfnWriteCoord(vecEnd.z);
-	g_engfuncs.pfnWriteShort(g_engfuncs.pfnModelIndex("sprites/smoke.spr"));
-	g_engfuncs.pfnWriteByte(0);	// starting frame
-	g_engfuncs.pfnWriteByte(0);	// frame rate
-	g_engfuncs.pfnWriteByte(iLifetime);
-	g_engfuncs.pfnWriteByte(10);	// width
-	g_engfuncs.pfnWriteByte(0);	// noise
-	g_engfuncs.pfnWriteByte(bRed);
-	g_engfuncs.pfnWriteByte(bGreen);
-	g_engfuncs.pfnWriteByte(bBlue);
-	g_engfuncs.pfnWriteByte(255);	// brightness
-	g_engfuncs.pfnWriteByte(0);	// scroll speed
-	g_engfuncs.pfnMessageEnd();
-}
 
 export struct CBaseAI : Prefab_t
 {
@@ -172,6 +148,7 @@ export struct CBaseAI : Prefab_t
 
 	// Util
 
+	// @awaiting: TASK_ANIM_INTERCEPTING
 	__forceinline void InsertingAnim(Activity activity) noexcept
 	{
 		m_Scheduler.Enroll(Task_Anim_Intercepting(activity), TASK_ANIM_INTERCEPTING, true);
@@ -309,6 +286,7 @@ export struct CBaseAI : Prefab_t
 		return false;
 	}
 
+	// @awaiting: TASK_MOVE_TURNING
 	inline void Turn(std::floating_point auto YAW, bool bSkipAnim = false) noexcept
 	{
 		if (std::abs(YAW - pev->ideal_yaw) > 1 && std::abs(YAW - pev->angles.yaw) > 1)
@@ -316,6 +294,16 @@ export struct CBaseAI : Prefab_t
 			pev->ideal_yaw = (float)YAW;
 			m_Scheduler.Enroll(Task_Move_Turn(bSkipAnim), TASK_MOVE_TURNING, true);
 		}
+	}
+
+	// @awaiting: TASK_MOVE_DETOUR
+	__forceinline void Detour(Vector const& vecTarget, double flApprox = VEC_HUMAN_HULL_MAX.x + 1.0) noexcept
+	{
+		m_Scheduler.Enroll(
+			Task_Move_Detour(vecTarget, flApprox),
+			TASK_MOVE_DETOUR,
+			true
+		);
 	}
 
 	// Path Verification
@@ -339,6 +327,13 @@ export struct CBaseAI : Prefab_t
 			++nCount;
 		}
 
+		// Including the first ladder we encounter.
+		if (nCount < Path.size() &&
+			(Path[nCount].how == GO_LADDER_DOWN || Path[nCount].how == GO_LADDER_UP))
+		{
+			++nCount;
+		}
+
 		std::span const SimplifiableSegments{ Path.subspan(0, nCount) };
 
 		if (!nCount)
@@ -351,12 +346,13 @@ export struct CBaseAI : Prefab_t
 			switch (Seg.how)
 			{
 			case GO_LADDER_UP:
-				vecDummy = Seg.ladder->m_bottom + Vector{ Seg.ladder->m_dirVector, 0 } * 17.0;
+				vecDummy = Seg.ladder->m_bottom/* + Vector{ Seg.ladder->m_dirVector, 0 } * 17.0*/;
 				res = PathTraversable(pev->origin, &vecDummy, fNoMonsters);
 				break;
 
+				// Skipping the offset, as it is normally in mid-air
 			case GO_LADDER_DOWN:
-				vecDummy = Seg.ladder->m_top + Vector{ Seg.ladder->m_dirVector, 0 } * 17.0;
+				vecDummy = Seg.ladder->m_top/* + Vector{ Seg.ladder->m_dirVector, 0 } * 17.0*/;
 				res = PathTraversable(pev->origin, &vecDummy, fNoMonsters);
 				break;
 
@@ -701,7 +697,8 @@ export struct CBaseAI : Prefab_t
 	// Movement Tasks
 
 	Task Task_Move_Turn(bool const bSkipAnim = false) noexcept;
-	Task Task_Move_Walk(Vector const vecTarget, Activity iMoveType = ACT_RUN, double const flApprox = VEC_HUMAN_HULL_MAX.x + 1.0, bool const bShouldPlayIdleAtEnd = true) noexcept;
+	Task Task_Move_Walk(Vector const vecTarget, Activity iMoveType = ACT_RUN, double const flApprox = VEC_HUMAN_HULL_MAX.x + 1.0) noexcept;
+	Task Task_Move_Detour(Vector const vecTarget, double const flApprox = VEC_HUMAN_HULL_MAX.x + 1.0) noexcept;
 	Task Task_Move_Ladder(CNavLadder const* ladder, NavTraverseType how, CNavArea const* pNextArea = nullptr) noexcept;
 
 	Task Task_Anim_TurnThenBackToIdle(std::string_view szInitialAnim) noexcept
@@ -727,12 +724,12 @@ export struct CBaseAI : Prefab_t
 
 		for (;;)
 		{
-			m_Scheduler.Enroll(Task_Plot_WalkOnPath(vecTarget), TASK_PLOT_WALK_TO, true);
+			m_Scheduler.Enroll(Task_Plot_WalkOnPath(vecTarget, 40), TASK_PLOT_WALK_TO, true);
 
 			while (m_Scheduler.Exist(TASK_PLOT_WALK_TO))
 				co_await 1.f;
 
-			m_Scheduler.Enroll(Task_Plot_WalkOnPath(vec), TASK_PLOT_WALK_TO, true);
+			m_Scheduler.Enroll(Task_Plot_WalkOnPath(vec, 40), TASK_PLOT_WALK_TO, true);
 
 			while (m_Scheduler.Exist(TASK_PLOT_WALK_TO))
 				co_await 1.f;
@@ -741,7 +738,7 @@ export struct CBaseAI : Prefab_t
 		}
 	}
 
-	Task Task_Plot_WalkOnPath(Vector const vecTarget) noexcept;
+	Task Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox = VEC_HUMAN_HULL_MAX.x + 1.0) noexcept;
 
 	Task Task_Anim_Intercepting(Activity activity) noexcept
 	{
@@ -766,141 +763,7 @@ export struct CBaseAI : Prefab_t
 		co_return;
 	}
 
-	Task Task_Debug_ShowPath(std::span<PathSegment const> seg, Vector const vecSrc) noexcept
-	{
-		static constexpr Vector VEC_OFS{ 0, 0, VEC_DUCK_HULL_MAX.z / 2.f };
-		static constexpr std::array<std::string_view, NUM_TRAVERSE_TYPES+1> TRAV_MEANS =
-		{
-			"GO_NORTH",
-			"GO_EAST",
-			"GO_SOUTH",
-			"GO_WEST",
-			"GO_LADDER_UP",
-			"GO_LADDER_DOWN",
-			"GO_JUMP",
-			"TERMINUS",
-		};
-
-		g_engfuncs.pfnServerPrint(
-			std::format("{} Segments in total.\n", seg.size()).c_str()
-		);
-
-		for (auto&& Seg : seg)
-		{
-			g_engfuncs.pfnServerPrint(
-				std::format("    {}@ {: <6.1f}{: <6.1f}{: <6.1f}\n", TRAV_MEANS[Seg.how], Seg.pos.x, Seg.pos.y, Seg.pos.z).c_str()
-			);
-		}
-
-		for (;;)
-		{
-			if (seg.size() >= 1)
-			{
-				UTIL_DrawBeamPoints(
-					vecSrc + VEC_OFS,
-					seg.front().pos + VEC_OFS,
-					5, 255, 255, 255
-				);
-			}
-
-			for (size_t i = 1; i < seg.size(); ++i)
-			{
-				auto& prev = seg[i - 1];
-				auto& cur = seg[i];
-
-/*
-			if (prev.how != GO_LADDER_DOWN && prev.how != GO_LADDER_UP
-				&& cur.how != GO_LADDER_DOWN && cur.how != GO_LADDER_UP)
-			{
-				continue;
-			}
-*/
-
-				switch (cur.how)
-				{
-				case GO_LADDER_DOWN:
-					UTIL_DrawBeamPoints(
-						cur.ladder->m_top,
-						cur.ladder->m_bottom,
-						5, 128, 0, 0
-					);
-					break;
-
-				case GO_LADDER_UP:
-					UTIL_DrawBeamPoints(
-						cur.ladder->m_bottom,
-						cur.ladder->m_top,
-						5, 0, 128, 0
-					);
-					break;
-
-				case GO_JUMP:
-					UTIL_DrawBeamPoints(
-						prev.pos + VEC_OFS,
-						cur.pos + VEC_OFS,
-						5, 0, 0, 128
-					);
-					break;
-
-					// Connect regular path with ladders.
-				default:
-					if (prev.how == GO_LADDER_UP)
-					{
-						UTIL_DrawBeamPoints(
-							prev.ladder->m_top,
-							cur.pos + VEC_OFS,
-							5, 255, 255, 255
-						);
-					}
-					else if (cur.how == GO_LADDER_UP)
-					{
-						UTIL_DrawBeamPoints(
-							prev.pos + VEC_OFS,
-							cur.ladder->m_bottom,
-							5, 255, 255, 255
-						);
-					}
-					else if (prev.how == GO_LADDER_DOWN)
-					{
-						UTIL_DrawBeamPoints(
-							prev.ladder->m_bottom,
-							cur.pos + VEC_OFS,
-							5, 255, 255, 255
-						);
-					}
-					else if (cur.how == GO_LADDER_DOWN)
-					{
-						UTIL_DrawBeamPoints(
-							prev.pos + VEC_OFS,
-							cur.ladder->m_top,
-							5, 255, 255, 255
-						);
-					}
-					else
-					{
-						UTIL_DrawBeamPoints(
-							prev.pos + VEC_OFS,
-							cur.pos + VEC_OFS,
-							5, 255, 255, 255
-						);
-					}
-					break;
-				}
-
-				co_await 0.01f;
-			}
-
-			UTIL_DrawBeamPoints(
-				m_vecGoal,
-				{ m_vecGoal.x, m_vecGoal.y, m_vecGoal.z + 36.f },
-				5, 0, 255, 0
-			);
-
-			co_await 0.01f;	// avoid inf loop.
-		}
-
-		co_return;
-	}
+	Task Task_Debug_ShowPath(std::span<PathSegment const> segments, Vector const vecSrc) noexcept;
 
 	// Static Precache
 
