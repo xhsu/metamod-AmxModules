@@ -242,7 +242,7 @@ Task CBaseAI::Task_Move_Detour(Vector vecTarget, double flApprox) noexcept
 						std::clamp<double>(flApprox / 2.5, 8.0, 16)
 					), TASK_MOVE_WALKING, true);
 
-				while (m_Scheduler.Exist(TASK_MOVE_WALKING | TASK_MOVE_TURNING))
+				while (m_Scheduler.Exist(TASK_MOVEMENTS_SIMPLE))
 				{
 					co_await TaskScheduler::NextFrame::Rank[3];
 
@@ -256,7 +256,7 @@ Task CBaseAI::Task_Move_Detour(Vector vecTarget, double flApprox) noexcept
 			}
 		}
 
-		while (m_Scheduler.Exist(TASK_MOVE_WALKING | TASK_MOVE_TURNING))
+		while (m_Scheduler.Exist(TASK_MOVEMENTS_SIMPLE))
 			co_await TaskScheduler::NextFrame::Rank[3];
 
 		co_await TaskScheduler::NextFrame::Rank[3];
@@ -314,7 +314,7 @@ Task CBaseAI::Task_Move_Ladder(CNavLadder const* ladder, NavTraverseType how, CN
 				1.0	// We have NO torlerance when ladders involved.
 			), TASK_MOVE_WALKING, true);
 
-		while (m_Scheduler.Exist(TASK_MOVE_WALKING | TASK_MOVE_TURNING))
+		while (m_Scheduler.Exist(TASK_MOVEMENTS_SIMPLE))
 		{
 			if ((pev->origin - vecLadderTop).LengthSquared2D() < 36.0 * 36.0)
 				pev->movetype = MOVETYPE_FLY;
@@ -457,7 +457,7 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 			auto bNewPath = false;
 			auto const pSave = std::addressof(*it);
 
-			while (m_Scheduler.Exist(TASK_MOVEMENTS))
+			while (m_Scheduler.Exist(TASK_MOVEMENTS_SIMPLE | TASK_MOVEMENTS_COMPLICATE))
 			{
 				co_await 0.11f;
 
@@ -536,7 +536,7 @@ Task CBaseAI::Task_Debug_ShowPath(std::span<PathSegment const> segments, Vector 
 			);
 		}
 
-		for (auto&& [src, dest] : segments | std::views::adjacent<2>)
+		for (auto&& [src, dest] : segments | std::views::take(15) | std::views::adjacent<2>)
 		{
 			// Connect regular path with ladders.
 			switch (src.how)
