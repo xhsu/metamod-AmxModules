@@ -17,6 +17,7 @@ import hlsdk;
 
 import CBase;
 import Nav;
+import Task;	// Testing only
 
 import UtlRandom;
 
@@ -534,7 +535,7 @@ export struct Pathfinder
 		m_path[m_pathLength].area = effectiveGoalArea;
 		m_path[m_pathLength].pos = pathEndPosition;
 		m_path[m_pathLength].ladder = nullptr;
-		m_path[m_pathLength].how = NUM_TRAVERSE_TYPES;
+		m_path[m_pathLength].how = GO_DIRECTLY;
 		m_pathLength++;
 
 		// do movement setup
@@ -567,13 +568,13 @@ export struct Pathfinder
 		m_path[0].pos = pev->origin;
 		m_path[0].pos.z = m_lastKnownArea->GetZ(pev->origin);
 		m_path[0].ladder = nullptr;
-		m_path[0].how = NUM_TRAVERSE_TYPES;
+		m_path[0].how = GO_DIRECTLY;
 
 		m_path[1].area = m_lastKnownArea;
 		m_path[1].pos = *goal;
 		m_path[1].pos.z = m_lastKnownArea->GetZ(*goal);
 		m_path[1].ladder = nullptr;
-		m_path[1].how = NUM_TRAVERSE_TYPES;
+		m_path[1].how = GO_DIRECTLY;
 
 		m_areaEnteredTimestamp = gpGlobals->time;
 		m_spotEncounter = nullptr;
@@ -591,7 +592,7 @@ export struct Pathfinder
 		// start in first area's center
 		m_path[0].pos = m_path[0].area->GetCenter();
 		m_path[0].ladder = nullptr;
-		m_path[0].how = NUM_TRAVERSE_TYPES;
+		m_path[0].how = GO_DIRECTLY;
 
 		for (auto i = 1u; i < m_pathLength; i++)
 		{
@@ -737,3 +738,115 @@ export struct Pathfinder
 
 	CountdownTimer m_repathTimer{};				// must have elapsed before bot can pathfind again
 };
+
+#pragma region Testing
+
+inline void UTIL_DrawBeamPoints(Vector const& vecStart, Vector const& vecEnd,
+	int iLifetime, std::uint8_t bRed, std::uint8_t bGreen, std::uint8_t bBlue) noexcept
+{
+	g_engfuncs.pfnMessageBegin(MSG_PVS, SVC_TEMPENTITY, vecStart, nullptr);
+	g_engfuncs.pfnWriteByte(TE_BEAMPOINTS);
+	g_engfuncs.pfnWriteCoord(vecStart.x);
+	g_engfuncs.pfnWriteCoord(vecStart.y);
+	g_engfuncs.pfnWriteCoord(vecStart.z);
+	g_engfuncs.pfnWriteCoord(vecEnd.x);
+	g_engfuncs.pfnWriteCoord(vecEnd.y);
+	g_engfuncs.pfnWriteCoord(vecEnd.z);
+	g_engfuncs.pfnWriteShort(g_engfuncs.pfnModelIndex("sprites/smoke.spr"));
+	g_engfuncs.pfnWriteByte(0);	// starting frame
+	g_engfuncs.pfnWriteByte(0);	// frame rate
+	g_engfuncs.pfnWriteByte(iLifetime);
+	g_engfuncs.pfnWriteByte(10);	// width
+	g_engfuncs.pfnWriteByte(0);	// noise
+	g_engfuncs.pfnWriteByte(bRed);
+	g_engfuncs.pfnWriteByte(bGreen);
+	g_engfuncs.pfnWriteByte(bBlue);
+	g_engfuncs.pfnWriteByte(255);	// brightness
+	g_engfuncs.pfnWriteByte(0);	// scroll speed
+	g_engfuncs.pfnMessageEnd();
+}
+
+Task Task_ShowPathfinder(Pathfinder const& PF) noexcept
+{
+	static constexpr Vector VEC_OFS{ 0, 0, VEC_DUCK_HULL_MAX.z / 2.f };
+
+	for (;;)
+	{
+		for (size_t i = 2; i < PF.m_pathLength; ++i)
+		{
+			auto& prev = PF.m_path[i - 1];
+			auto& cur = PF.m_path[i];
+
+			switch (cur.how)
+			{
+			case GO_LADDER_DOWN:
+				UTIL_DrawBeamPoints(
+					cur.ladder->m_top,
+					cur.ladder->m_bottom,
+					5, 192, 0, 0
+				);
+				break;
+
+			case GO_LADDER_UP:
+				UTIL_DrawBeamPoints(
+					cur.ladder->m_bottom,
+					cur.ladder->m_top,
+					5, 0, 192, 0
+				);
+				break;
+
+			case GO_JUMP:
+				UTIL_DrawBeamPoints(
+					prev.pos + VEC_OFS,
+					cur.pos + VEC_OFS,
+					9, 0, 0, 192
+				);
+				break;
+
+			default:
+				UTIL_DrawBeamPoints(
+					prev.pos + VEC_OFS,
+					cur.pos + VEC_OFS,
+					9, 255, 255, 255
+				);
+				break;
+			}
+
+			co_await 0.01f;
+		}
+
+		co_await 0.01f;	// avoid inf loop.
+	}
+
+	co_return;
+}
+
+export void CzBotPathing_Test(CBasePlayer* pPlayer, Vector const& vecTarget) noexcept
+{
+	static Pathfinder PF{};
+	PF.pev = pPlayer->pev;
+	PF.m_lastKnownArea = TheNavAreaGrid.GetNavArea(pPlayer->pev->origin);
+	PF.m_areaEnteredTimestamp = gpGlobals->time;
+
+	if (PF.ComputePath(TheNavAreaGrid.GetNavArea(vecTarget), &vecTarget, FASTEST_ROUTE))
+	{
+		for (size_t i = 1; i < PF.m_pathLength; ++i)
+		{
+			auto const text = std::format(
+				"[{:0>3}] {} {} {}\n",
+				i,
+				PF.m_path[i].pos.x,
+				PF.m_path[i].pos.y,
+				PF.m_path[i].pos.z
+			);
+
+			g_engfuncs.pfnServerPrint(text.c_str());
+		}
+
+		TaskScheduler::Enroll(Task_ShowPathfinder(PF), (1 << 0), true);
+	}
+	else
+		g_engfuncs.pfnServerPrint("No path found!\n");
+}
+
+#pragma endregion Testing

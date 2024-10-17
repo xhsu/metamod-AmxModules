@@ -94,7 +94,7 @@ export inline auto BotSIN(float angle) noexcept
 // If 'goalArea' is NULL, will compute a path as close as possible to 'goalPos'.
 // If 'goalPos' is NULL, will use the center of 'goalArea' as the goal position.
 // Returns true if a path exists.
-bool NavAreaBuildPath(
+export inline bool NavAreaBuildPath(
 	CNavArea* startArea,
 	CNavArea* goalArea,
 	const Vector& goalPos,
@@ -714,7 +714,7 @@ export struct CNavPath
 		m_path[m_segmentCount].area = effectiveGoalArea;
 		m_path[m_segmentCount].pos = pathEndPosition;
 		m_path[m_segmentCount].ladder = nullptr;
-		m_path[m_segmentCount].how = NUM_TRAVERSE_TYPES;
+		m_path[m_segmentCount].how = GO_DIRECTLY;
 		++m_segmentCount;
 
 		return true;
@@ -733,7 +733,7 @@ private:
 		// start in first area's center
 		m_path[0].pos = m_path[0].area->GetCenter();
 		m_path[0].ladder = nullptr;
-		m_path[0].how = NUM_TRAVERSE_TYPES;
+		m_path[0].how = GO_DIRECTLY;
 
 		for (int i = 1; i < m_segmentCount; i++)
 		{
@@ -820,9 +820,9 @@ private:
 			else if (to->how == GO_LADDER_DOWN)
 			{
 				// find our ladder
-				const NavLadderList* list = from->area->GetLadderList(LADDER_DOWN);
-				NavLadderList::const_iterator iter;
-				for (iter = list->begin(); iter != list->end(); iter++)
+				auto const list = from->area->GetLadderList(LADDER_DOWN);
+				auto iter = list->begin();
+				for (; iter != list->end(); iter++)
 				{
 					CNavLadder* ladder = (*iter);
 
@@ -865,14 +865,14 @@ private:
 		m_path[0].pos.y = start.y;
 		m_path[0].pos.z = startArea->GetZ(start);
 		m_path[0].ladder = nullptr;
-		m_path[0].how = NUM_TRAVERSE_TYPES;
+		m_path[0].how = GO_DIRECTLY;
 
 		m_path[1].area = goalArea;
 		m_path[1].pos.x = goal.x;
 		m_path[1].pos.y = goal.y;
 		m_path[1].pos.z = goalArea->GetZ(goal);
 		m_path[1].ladder = nullptr;
-		m_path[1].how = NUM_TRAVERSE_TYPES;
+		m_path[1].how = GO_DIRECTLY;
 
 		return true;
 	}

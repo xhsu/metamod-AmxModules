@@ -2,6 +2,8 @@
 #include <ranges>
 #endif
 
+#include <assert.h>
+
 import std;
 import hlsdk;
 
@@ -17,10 +19,10 @@ import Prefab;
 import VTFH;
 
 import Improvisational;	// CZ Hostage
-import LocalNav;	// CS Hostage
-import MonsterNav;	// HL1
-import Nav;			// CZBOT
-import Pathfinder;	// Testing module
+import LocalNav;		// CS Hostage
+//import MonsterNav;		// HL1
+import Nav;
+//import Pathfinder;		// CZBOT
 
 
 static short s_iBeamSprite = 0;
@@ -51,164 +53,102 @@ inline void UTIL_DrawBeamPoints(Vector const& vecStart, Vector const& vecEnd,
 	g_engfuncs.pfnMessageEnd();
 }
 
-Task Task_ShowPathfinder(Pathfinder const& PF) noexcept
+
+// Monitors
+
+Task Task_ShowNavPath(std::ranges::input_range auto segments, Vector const vecSrc) noexcept
 {
 	static constexpr Vector VEC_OFS{ 0, 0, VEC_DUCK_HULL_MAX.z / 2.f };
-
-	for (;;)
+	static constexpr std::array<std::string_view, NUM_TRAVERSE_TYPES+1> TRAV_MEANS =
 	{
-		for (size_t i = 2; i < PF.m_pathLength; ++i)
-		{
-			auto& prev = PF.m_path[i - 1];
-			auto& cur = PF.m_path[i];
+		"GO_NORTH",
+		"GO_EAST",
+		"GO_SOUTH",
+		"GO_WEST",
+		"GO_DIRECTLY",
+		"GO_LADDER_UP",
+		"GO_LADDER_DOWN",
+		"GO_JUMP",
+		"WHAT THE FUCK?"
+	};
 
-			switch (cur.how)
-			{
-			case GO_LADDER_DOWN:
-				UTIL_DrawBeamPoints(
-					cur.ladder->m_top,
-					cur.ladder->m_bottom,
-					5, 192, 0, 0
-				);
-				break;
+	g_engfuncs.pfnServerPrint(
+		std::format("{} Segments in total.\n", segments.size()).c_str()
+	);
 
-			case GO_LADDER_UP:
-				UTIL_DrawBeamPoints(
-					cur.ladder->m_bottom,
-					cur.ladder->m_top,
-					5, 0, 192, 0
-				);
-				break;
-
-			case GO_JUMP:
-				UTIL_DrawBeamPoints(
-					prev.pos + VEC_OFS,
-					cur.pos + VEC_OFS,
-					9, 0, 0, 192
-				);
-				break;
-
-			default:
-				UTIL_DrawBeamPoints(
-					prev.pos + VEC_OFS,
-					cur.pos + VEC_OFS,
-					9, 255, 255, 255
-				);
-				break;
-			}
-
-			co_await 0.01f;
-		}
-
-		co_await 0.01f;	// avoid inf loop.
+	for (auto&& Seg : segments)
+	{
+		g_engfuncs.pfnServerPrint(
+			std::format("    {}@ {: <6.1f}{: <6.1f}{: <6.1f}\n", TRAV_MEANS[Seg.how], Seg.pos.x, Seg.pos.y, Seg.pos.z).c_str()
+		);
 	}
 
-	co_return;
-}
-
-Task Task_ShowNavPath(std::span<PathSegment const> seg, Vector const vecSrc) noexcept
-{
-	static constexpr Vector VEC_OFS{ 0, 0, VEC_DUCK_HULL_MAX.z / 2.f };
-
 	for (;;)
 	{
-		if (seg.size() >= 1)
+		co_await TaskScheduler::NextFrame::Rank.back();;	// avoid inf loop.
+
+		if (segments.size() >= 1 && segments.front().how <= NT_SIMPLE)
 		{
 			UTIL_DrawBeamPoints(
 				vecSrc + VEC_OFS,
-				seg.front().pos + VEC_OFS,
+				segments.front().pos + VEC_OFS,
 				5, 255, 255, 255
 			);
 		}
 
-		for (size_t i = 1; i < seg.size(); ++i)
+		for (auto&& [src, dest] : segments /*| std::views::take(15)*/ | std::views::adjacent<2>)
 		{
-			auto& prev = seg[i - 1];
-			auto& cur = seg[i];
-
-/*
-			if (prev.how != GO_LADDER_DOWN && prev.how != GO_LADDER_UP
-				&& cur.how != GO_LADDER_DOWN && cur.how != GO_LADDER_UP)
-			{
+			if (!src.ladder && (src.how == GO_LADDER_DOWN || src.how == GO_LADDER_UP))
 				continue;
-			}
-*/
 
-			switch (cur.how)
+			// Connect regular path with ladders.
+			switch (src.how)
 			{
 			case GO_LADDER_DOWN:
 				UTIL_DrawBeamPoints(
-					cur.ladder->m_top,
-					cur.ladder->m_bottom,
-					5, 192, 0, 0
+					src.ladder->m_top,
+					src.ladder->m_bottom,
+					5, 128, 0, 0
+				);
+				UTIL_DrawBeamPoints(
+					src.ladder->m_bottom,
+					dest.pos + VEC_OFS,
+					5, 255, 255, 255
 				);
 				break;
 
 			case GO_LADDER_UP:
 				UTIL_DrawBeamPoints(
-					cur.ladder->m_bottom,
-					cur.ladder->m_top,
-					5, 0, 192, 0
+					src.ladder->m_bottom,
+					src.ladder->m_top,
+					5, 0, 128, 0
+				);
+				UTIL_DrawBeamPoints(
+					src.ladder->m_top,
+					dest.pos + VEC_OFS,
+					5, 255, 255, 255
 				);
 				break;
 
 			case GO_JUMP:
 				UTIL_DrawBeamPoints(
-					prev.pos + VEC_OFS,
-					cur.pos + VEC_OFS,
-					5, 0, 0, 192
+					src.pos + VEC_OFS,
+					dest.pos + VEC_OFS,
+					5, 0, 0, 128
 				);
 				break;
 
-				// Connect regular path with ladders.
 			default:
-				if (prev.how == GO_LADDER_UP)
-				{
-					UTIL_DrawBeamPoints(
-						prev.ladder->m_top,
-						cur.pos + VEC_OFS,
-						5, 255, 255, 255
-					);
-				}
-				else if (cur.how == GO_LADDER_UP)
-				{
-					UTIL_DrawBeamPoints(
-						prev.pos + VEC_OFS,
-						cur.ladder->m_bottom,
-						5, 255, 255, 255
-					);
-				}
-				else if (prev.how == GO_LADDER_DOWN)
-				{
-					UTIL_DrawBeamPoints(
-						prev.ladder->m_bottom,
-						cur.pos + VEC_OFS,
-						5, 255, 255, 255
-					);
-				}
-				else if (cur.how == GO_LADDER_DOWN)
-				{
-					UTIL_DrawBeamPoints(
-						prev.pos + VEC_OFS,
-						cur.ladder->m_top,
-						5, 255, 255, 255
-					);
-				}
-				else
-				{
-					UTIL_DrawBeamPoints(
-						prev.pos + VEC_OFS,
-						cur.pos + VEC_OFS,
-						5, 255, 255, 255
-					);
-				}
+				UTIL_DrawBeamPoints(
+					src.pos + VEC_OFS,
+					dest.pos + VEC_OFS,
+					5, 255, 255, 255
+				);
 				break;
 			}
 
-			co_await 0.01f;
+			co_await TaskScheduler::NextFrame::Rank.back();
 		}
-
-		co_await 0.01f;	// avoid inf loop.
 	}
 
 	co_return;
@@ -231,49 +171,6 @@ Task Task_ShowLadders() noexcept
 	co_return;
 }
 
-Task Task_ShowLN(std::span<Vector> rgvec, Vector const vecSrc) noexcept
-{
-	for (;;)
-	{
-		UTIL_DrawBeamPoints(vecSrc, rgvec.back(), 9, 255, 255, 255);
-
-		co_await 0.01f;
-
-		for (auto i = 1u; i < rgvec.size(); ++i)
-		{
-			UTIL_DrawBeamPoints(rgvec[i - 1], rgvec[i], 9, 255, 255, 255);
-			co_await 0.01f;
-		}
-
-		co_await 0.1f;
-	}
-
-	co_return;
-}
-
-Task Task_ShowMN(MonsterNav const& MN, Vector const vecSrc) noexcept
-{
-	for (;;)
-	{
-		UTIL_DrawBeamPoints(vecSrc, MN.m_Route[MN.m_iRouteIndex].vecLocation, 9, 255, 255, 255);
-
-		co_await 0.01f;
-
-		for (auto i = MN.m_iRouteIndex + 1; i < std::ssize(MN.m_Route); ++i)
-		{
-			if (MN.m_Route[i].iType == 0)
-				break;
-
-			UTIL_DrawBeamPoints(MN.m_Route[i - 1].vecLocation, MN.m_Route[i - 1].vecLocation, 9, 255, 255, 255);
-			co_await 0.01f;
-		}
-
-		co_await 0.1f;
-	}
-
-	co_return;
-}
-
 Task Task_ShowArea(CBasePlayer* pPlayer) noexcept
 {
 	for (;;)
@@ -291,6 +188,8 @@ Task Task_ShowArea(CBasePlayer* pPlayer) noexcept
 }
 
 extern Task Task_Cheat_Dispatch(CBasePlayer* pPlayer) noexcept;
+
+// DLL Export Functions
 
 void fw_GameInit_Post() noexcept
 {
@@ -328,35 +227,7 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 
 		return MRES_SUPERCEDE;
 	}
-	else if (szCmd == "pf_run")
-	{
-		static Pathfinder PF{};
-		PF.pev = pPlayer->pev;
-		PF.m_lastKnownArea = TheNavAreaGrid.GetNavArea(pPlayer->pev->origin);
-		PF.m_areaEnteredTimestamp = gpGlobals->time;
-
-		if (PF.ComputePath(TheNavAreaGrid.GetNavArea(vecTarget), &vecTarget, FASTEST_ROUTE))
-		{
-			for (size_t i = 1; i < PF.m_pathLength; ++i)
-			{
-				auto const text = std::format(
-					"[{:0>3}] {} {} {}\n",
-					i,
-					PF.m_path[i].pos.x,
-					PF.m_path[i].pos.y,
-					PF.m_path[i].pos.z
-				);
-
-				g_engfuncs.pfnServerPrint(text.c_str());
-			}
-
-			TaskScheduler::Enroll(Task_ShowPathfinder(PF), (1 << 0), true);
-		}
-		else
-			g_engfuncs.pfnServerPrint("No path found!\n");
-
-		return MRES_SUPERCEDE;
-	}
+//	else if (szCmd == "pf_run") {}
 	else if (szCmd == "pf_ladders")
 	{
 		TaskScheduler::Enroll(Task_ShowLadders(), (1 << 0), true);
@@ -383,50 +254,10 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 	}
 
 	// Local NAV
-	else if (szCmd == "pf_ln")
-	{
-		static CLocalNav LocalNav{ pPlayer };
-		static std::vector<Vector> Nodes{};
-
-		if (auto const fl = (pPlayer->pev->origin - vecTarget).Length(); fl > 1000)
-		{
-			g_engfuncs.pfnServerPrint(std::format("Too far! ({:.1f})\n", fl).c_str());
-			return MRES_SUPERCEDE;
-		}
-
-		node_index_t nindexPath = LocalNav.FindPath(pPlayer->pev->origin, vecTarget, 40, ignore_monsters | dont_ignore_glass);
-		if (nindexPath == NODE_INVALID_EMPTY)
-		{
-			g_engfuncs.pfnServerPrint(std::format("Path no found!\n").c_str());
-		}
-		else
-		{
-			LocalNav.SetupPathNodes(nindexPath, &Nodes);
-			auto const m_nTargetNode = LocalNav.GetFurthestTraversableNode(pPlayer->pev->origin, &Nodes, ignore_monsters | dont_ignore_glass);
-			g_engfuncs.pfnServerPrint(std::format("m_nTargetNode == {}\n", m_nTargetNode).c_str());
-			TaskScheduler::Enroll(Task_ShowLN({ Nodes.begin(), Nodes.begin() + m_nTargetNode + 1 }, pPlayer->pev->origin), (1 << 0), true);
-			//TaskScheduler::Enroll(Task_ShowLN(Nodes, pPlayer->pev->origin), (1 << 0), true);
-		}
-
-		return MRES_SUPERCEDE;
-	}
+//	else if (szCmd == "pf_ln") {}
 
 	// Monster NAV
-	else if (szCmd == "pf_mn")
-	{
-		static MonsterNav MN{
-			.pev = pPlayer->pev,
-		};
-
-		if (MN.BuildRoute(vecTarget, bits_MF_TO_LOCATION, nullptr))
-		{
-			TaskScheduler::Enroll(Task_ShowMN(MN, pPlayer->pev->origin), (1 << 0), true);
-		}
-		else
-			g_engfuncs.pfnServerPrint("No path found!\n");
-
-		return MRES_SUPERCEDE;
-	}
+//	else if (szCmd == "pf_mn") {}
 
 	// Improv NAV
 	else if (szCmd == "pf_im")
@@ -446,6 +277,32 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 		return MRES_SUPERCEDE;
 	}
 
+	// My creation
+	else if (szCmd == "pf_nv")
+	{
+		TraceResult tr{};
+		g_engfuncs.pfnTraceLine(
+			pPlayer->pev->origin,
+			pPlayer->pev->origin + Vector::Down() * 80.f,
+			dont_ignore_glass | dont_ignore_monsters,
+			pPlayer->edict(),
+			&tr
+		);
+
+		static Navigator nav{ .m_pHost{pPlayer}, };
+
+		if (!nav.Compute(tr.vecEndPos, vecTarget))
+		{
+			g_engfuncs.pfnServerPrint("No path found!\n");
+			return MRES_SUPERCEDE;
+		}
+		else
+			TaskScheduler::Enroll(Task_ShowNavPath(nav.ConcatLocalPath(tr.vecEndPos), tr.vecEndPos), (1ull << 0), true);
+
+
+		return MRES_SUPERCEDE;
+	}
+
 	// Testing & cheating
 	else if (szCmd == "pf_cheat")
 	{
@@ -455,21 +312,6 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 	else if (szCmd == "pf_stopch")
 	{
 		TaskScheduler::Delist((1ull << 0) | (1ull << 1) | (1ull << 2));
-		return MRES_SUPERCEDE;
-	}
-
-	else if (szCmd == "mdl_read")
-	{
-		if (GoldSrc::CacheStudioModelInfo("models/hgrunt.mdl"))
-		{
-			for (auto&& [szName, info] : GoldSrc::m_StudioInfo.at("models/hgrunt.mdl"))
-			{
-				g_engfuncs.pfnServerPrint(
-					std::format("[{}]: {} - {:.2f}\n", info.m_iSeqIdx, szName, info.m_total_length).c_str()
-				);
-			}
-		}
-
 		return MRES_SUPERCEDE;
 	}
 
@@ -541,7 +383,7 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 
 		g_engfuncs.pfnTraceLine(
 			pPlayer->pev->origin,
-			pPlayer->pev->origin - Vector::Down() * 80.f,
+			pPlayer->pev->origin + Vector::Down() * 80.f,
 			dont_ignore_glass | dont_ignore_monsters,
 			pPlayer->edict(),
 			&tr

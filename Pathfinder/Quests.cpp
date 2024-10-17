@@ -22,7 +22,9 @@ enum ETaskCheat : std::uint64_t
 	TASK_PATH_CHEAT_DISPATCH = (1ull << 2),
 };
 
-extern Task Task_ShowNavPath(std::span<PathSegment const> seg, Vector const vecSrc) noexcept;
+// Extern template.
+// https://stackoverflow.com/questions/8130602/using-extern-template-c11-to-avoid-instantiation
+extern Task Task_ShowNavPath(std::ranges::input_range auto segments, Vector const vecSrc) noexcept;
 
 static Task Task_Cheat_DeathMatch(CBasePlayer* pPlayer) noexcept
 {

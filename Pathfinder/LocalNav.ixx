@@ -844,3 +844,78 @@ export struct CLocalNav
 	node_index_t m_nindexAvailableNode{};
 	Vector m_vecStartingLoc{};
 };
+
+#pragma region Testing
+
+inline void UTIL_DrawBeamPoints(Vector const& vecStart, Vector const& vecEnd,
+	int iLifetime, std::uint8_t bRed, std::uint8_t bGreen, std::uint8_t bBlue) noexcept
+{
+	g_engfuncs.pfnMessageBegin(MSG_PVS, SVC_TEMPENTITY, vecStart, nullptr);
+	g_engfuncs.pfnWriteByte(TE_BEAMPOINTS);
+	g_engfuncs.pfnWriteCoord(vecStart.x);
+	g_engfuncs.pfnWriteCoord(vecStart.y);
+	g_engfuncs.pfnWriteCoord(vecStart.z);
+	g_engfuncs.pfnWriteCoord(vecEnd.x);
+	g_engfuncs.pfnWriteCoord(vecEnd.y);
+	g_engfuncs.pfnWriteCoord(vecEnd.z);
+	g_engfuncs.pfnWriteShort(g_engfuncs.pfnModelIndex("sprites/smoke.spr"));
+	g_engfuncs.pfnWriteByte(0);	// starting frame
+	g_engfuncs.pfnWriteByte(0);	// frame rate
+	g_engfuncs.pfnWriteByte(iLifetime);
+	g_engfuncs.pfnWriteByte(10);	// width
+	g_engfuncs.pfnWriteByte(0);	// noise
+	g_engfuncs.pfnWriteByte(bRed);
+	g_engfuncs.pfnWriteByte(bGreen);
+	g_engfuncs.pfnWriteByte(bBlue);
+	g_engfuncs.pfnWriteByte(255);	// brightness
+	g_engfuncs.pfnWriteByte(0);	// scroll speed
+	g_engfuncs.pfnMessageEnd();
+}
+
+Task Task_ShowLN(std::span<Vector> rgvec, Vector const vecSrc) noexcept
+{
+	for (;;)
+	{
+		UTIL_DrawBeamPoints(vecSrc, rgvec.back(), 9, 255, 255, 255);
+
+		co_await 0.01f;
+
+		for (auto i = 1u; i < rgvec.size(); ++i)
+		{
+			UTIL_DrawBeamPoints(rgvec[i - 1], rgvec[i], 9, 255, 255, 255);
+			co_await 0.01f;
+		}
+
+		co_await 0.1f;
+	}
+
+	co_return;
+}
+
+export void LocalNav_Test(CBasePlayer* pPlayer, Vector const& vecTarget) noexcept
+{
+	static CLocalNav LocalNav{ pPlayer };
+	static std::vector<Vector> Nodes{};
+
+	if (auto const fl = (pPlayer->pev->origin - vecTarget).Length(); fl > 1000)
+	{
+		g_engfuncs.pfnServerPrint(std::format("Too far! ({:.1f})\n", fl).c_str());
+		return;
+	}
+
+	node_index_t nindexPath = LocalNav.FindPath(pPlayer->pev->origin, vecTarget, 40, ignore_monsters | dont_ignore_glass);
+	if (nindexPath == NODE_INVALID_EMPTY)
+	{
+		g_engfuncs.pfnServerPrint(std::format("Path no found!\n").c_str());
+	}
+	else
+	{
+		LocalNav.SetupPathNodes(nindexPath, &Nodes);
+		auto const m_nTargetNode = LocalNav.GetFurthestTraversableNode(pPlayer->pev->origin, &Nodes, ignore_monsters | dont_ignore_glass);
+		g_engfuncs.pfnServerPrint(std::format("m_nTargetNode == {}\n", m_nTargetNode).c_str());
+		TaskScheduler::Enroll(Task_ShowLN({ Nodes.begin(), Nodes.begin() + m_nTargetNode + 1 }, pPlayer->pev->origin), (1 << 0), true);
+		//TaskScheduler::Enroll(Task_ShowLN(Nodes, pPlayer->pev->origin), (1 << 0), true);
+	}
+}
+
+#pragma endregion Testing

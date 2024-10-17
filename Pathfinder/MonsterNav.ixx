@@ -8,6 +8,7 @@ import std;
 import hlsdk;
 
 import CBase;
+import Task;	// testing part only.
 
 // an array of waypoints makes up the monster's route. 
 // !!!LATER- this declaration doesn't belong in this file.
@@ -729,3 +730,69 @@ export struct MonsterNav
 	int					m_afCapability{};	// tells us what a monster can/can't do.
 
 };
+
+#pragma region Testing
+
+inline void UTIL_DrawBeamPoints(Vector const& vecStart, Vector const& vecEnd,
+	int iLifetime, std::uint8_t bRed, std::uint8_t bGreen, std::uint8_t bBlue) noexcept
+{
+	g_engfuncs.pfnMessageBegin(MSG_PVS, SVC_TEMPENTITY, vecStart, nullptr);
+	g_engfuncs.pfnWriteByte(TE_BEAMPOINTS);
+	g_engfuncs.pfnWriteCoord(vecStart.x);
+	g_engfuncs.pfnWriteCoord(vecStart.y);
+	g_engfuncs.pfnWriteCoord(vecStart.z);
+	g_engfuncs.pfnWriteCoord(vecEnd.x);
+	g_engfuncs.pfnWriteCoord(vecEnd.y);
+	g_engfuncs.pfnWriteCoord(vecEnd.z);
+	g_engfuncs.pfnWriteShort(g_engfuncs.pfnModelIndex("sprites/smoke.spr"));
+	g_engfuncs.pfnWriteByte(0);	// starting frame
+	g_engfuncs.pfnWriteByte(0);	// frame rate
+	g_engfuncs.pfnWriteByte(iLifetime);
+	g_engfuncs.pfnWriteByte(10);	// width
+	g_engfuncs.pfnWriteByte(0);	// noise
+	g_engfuncs.pfnWriteByte(bRed);
+	g_engfuncs.pfnWriteByte(bGreen);
+	g_engfuncs.pfnWriteByte(bBlue);
+	g_engfuncs.pfnWriteByte(255);	// brightness
+	g_engfuncs.pfnWriteByte(0);	// scroll speed
+	g_engfuncs.pfnMessageEnd();
+}
+
+Task Task_ShowMN(MonsterNav const& MN, Vector const vecSrc) noexcept
+{
+	for (;;)
+	{
+		UTIL_DrawBeamPoints(vecSrc, MN.m_Route[MN.m_iRouteIndex].vecLocation, 9, 255, 255, 255);
+
+		co_await 0.01f;
+
+		for (auto i = MN.m_iRouteIndex + 1; i < std::ssize(MN.m_Route); ++i)
+		{
+			if (MN.m_Route[i].iType == 0)
+				break;
+
+			UTIL_DrawBeamPoints(MN.m_Route[i - 1].vecLocation, MN.m_Route[i - 1].vecLocation, 9, 255, 255, 255);
+			co_await 0.01f;
+		}
+
+		co_await 0.1f;
+	}
+
+	co_return;
+}
+
+export void MonsterNav_Test(CBasePlayer* pPlayer, Vector const& vecTarget) noexcept
+{
+	static MonsterNav MN{
+		.pev = pPlayer->pev,
+	};
+
+	if (MN.BuildRoute(vecTarget, bits_MF_TO_LOCATION, nullptr))
+	{
+		TaskScheduler::Enroll(Task_ShowMN(MN, pPlayer->pev->origin), (1 << 0), true);
+	}
+	else
+		g_engfuncs.pfnServerPrint("No path found!\n");
+}
+
+#pragma endregion Testing

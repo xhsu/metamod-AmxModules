@@ -455,6 +455,10 @@ export enum NavTraverseType
 	GO_EAST,
 	GO_SOUTH,
 	GO_WEST,
+	GO_DIRECTLY,
+
+	NT_SIMPLE = GO_DIRECTLY,
+
 	GO_LADDER_UP,
 	GO_LADDER_DOWN,
 	GO_JUMP,
