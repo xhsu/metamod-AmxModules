@@ -180,6 +180,36 @@ export struct Navigator
 		);
 
 		m_Segments.front().how = GO_DIRECTLY;
+
+		// LUNA: Now let's call FindLocalPath() and append the result to m_Segments
+
+		// Delete the first N accessable nodes.
+		SimplifyPath(vecSrc);
+
+		assert(!m_Segments.empty());
+		auto const nindexPath =
+			FindLocalPath(vecSrc, m_Segments.front().pos);
+
+		// Append the local nav result onto m_Segments.
+		for (auto nCurrentIndex = nindexPath; nCurrentIndex != NODE_INVALID_EMPTY; /* Does nothing here. */)
+		{
+			auto const& CurNode = m_nodeArr[nCurrentIndex];
+			auto const pArea = TheNavAreaGrid.GetNearestNavArea(CurNode.vecLoc);
+
+			// Same as CZBOT nav, it's tracking from end to start.
+			m_Segments.emplace_front(
+				pArea,
+				GO_DIRECTLY,
+				Vector{ CurNode.vecLoc.x, CurNode.vecLoc.y, pArea->GetZ(CurNode.vecLoc) },
+				nullptr
+			);
+
+			auto& ref = m_Segments.front().pos;
+			nCurrentIndex = CurNode.nindexParent;	// this is where the 'next' in cur for loop is - fuck the C++ scope.
+		}
+
+		// Simplify again, find furthest accessable local NAV.
+		SimplifyPath(vecSrc);
 		return true;
 	}
 
@@ -211,43 +241,6 @@ export struct Navigator
 		);
 
 		return true;
-	}
-
-	// LUNA: Calls FindLocalPath() and append the result to m_Segments
-	auto ConcatLocalPath(Vector const& vecStart, float flTargetRadius = 80) noexcept -> decltype(std::ranges::subrange(m_Segments.begin(), m_Segments.end()))
-	{
-		auto const&& [nCount, Path] = SimplifiedPath(vecStart);
-
-		// Delete the first N accessable nodes.
-		if (nCount > 0)
-			m_Segments.erase(m_Segments.begin(), m_Segments.begin() + nCount);
-		// Remember now that the view-Range Path is invalidate!
-
-		assert(!m_Segments.empty());
-		auto const nindexPath =
-			FindLocalPath(vecStart, m_Segments.front().pos, flTargetRadius);
-
-		if (nindexPath != NODE_INVALID_EMPTY)
-		{
-			// Append the local nav result onto m_Segments.
-			for (auto nCurrentIndex = nindexPath; nCurrentIndex != NODE_INVALID_EMPTY; /* Does nothing here. */)
-			{
-				auto const& CurNode = m_nodeArr[nCurrentIndex];
-				auto const pArea = TheNavAreaGrid.GetNearestNavArea(CurNode.vecLoc);
-
-				// Same as CZBOT nav, it's tracking from end to start.
-				m_Segments.emplace_front(
-					pArea,
-					GO_DIRECTLY,
-					Vector{ CurNode.vecLoc.x, CurNode.vecLoc.y, pArea->GetZ(CurNode.vecLoc) },
-					nullptr
-				);
-
-				nCurrentIndex = CurNode.nindexParent;	// fuck the C++ scope.
-			}
-		}
-
-		return SimplifiedPath(vecStart).second;
 	}
 
 	node_index_t FindLocalPath(Vector const& vecStart, Vector const& vecDest, float flTargetRadius = 80, TRACE_FL fNoMonsters = dont_ignore_glass | dont_ignore_monsters) noexcept
@@ -354,18 +347,21 @@ export struct Navigator
 		}
 
 		auto nIndexLast = NODE_INVALID_EMPTY;
-		auto vecNodeLoc = vecStart;
 		m_nindexAvailableNode = 0;
 
-		while ((vecNodeLoc - vecActualDest).Length2D() >= HOSTAGE_STEPSIZE)
+		while ((vecStart - vecActualDest).Length2D() >= HOSTAGE_STEPSIZE)
 		{
-			node_index_t nindexCurrent = nIndexLast;
-
-			vecNodeLoc = vecNodeLoc + (vecPathDir * HOSTAGE_STEPSIZE);
-			nIndexLast = AddNode(nindexCurrent, vecNodeLoc);
+			auto const vecNodeLoc = vecStart + (vecPathDir * HOSTAGE_STEPSIZE);
+			nIndexLast = AddNode(nIndexLast, vecNodeLoc);
 
 			if (nIndexLast == NODE_INVALID_EMPTY)
 				break;
+		}
+
+		if (nIndexLast != NODE_INVALID_EMPTY)
+		{
+			auto& ref = m_nodeArr[nIndexLast].vecLoc;
+			auto i = 2;
 		}
 
 		return nIndexLast;
@@ -561,7 +557,7 @@ export struct Navigator
 
 #pragma region Path Verification
 
-	auto SimplifiedPath(Vector const& vecSrc, TRACE_FL fNoMonsters = dont_ignore_glass | dont_ignore_monsters) noexcept -> std::pair<int, decltype(std::ranges::subrange(m_Segments.begin(), m_Segments.end()))>
+	bool SimplifyPath(Vector const& vecSrc, TRACE_FL fNoMonsters = dont_ignore_glass | dont_ignore_monsters) noexcept
 	{
 		auto& Path = m_Segments;
 		Vector vecDummy{};
@@ -587,7 +583,7 @@ export struct Navigator
 		std::ranges::subrange const SimplifiableSegments{ Path.begin(), Path.begin() + nCount };
 
 		if (nCount <= 0)
-			return { 0, Path };
+			return false;
 
 		// Counting down from the farthest.
 		for (nCount = std::ssize(SimplifiableSegments) - 1; auto && Seg : SimplifiableSegments | std::views::reverse)
@@ -611,17 +607,22 @@ export struct Navigator
 				break;
 			}
 
-			assert(std::ssize(Path) > nCount);
+			assert(0 <= nCount && nCount < std::ssize(Path));
 
 			// The node gets modified in the process.
 			if (res != PTRAVELS_NO)
-				return { nCount, std::ranges::subrange{ Path.begin() + nCount, Path.end() - nCount } };
+			{
+				// nCount - the global index actually, not only for the subrange.
+				// So now we are erasing from the first to the N-th.
+				Path.erase(Path.begin(), Path.begin() + nCount);
+				return true;
+			}
 
 			--nCount;
 		}
 
 		// None of them can be simplified, so just return the whole path.
-		return { 0, Path };
+		return false;
 	}
 
 	ETraversable PathTraversable(Vector const& vecSource, Vector* pvecDest, TRACE_FL fNoMonsters) const noexcept
@@ -890,7 +891,6 @@ export struct Navigator
 
 		return NODE_INVALID_EMPTY;
 	}
-
 
 #pragma endregion Path Verification
 

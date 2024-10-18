@@ -395,7 +395,6 @@ Task CBaseAI::Task_Move_Ladder(CNavLadder const* ladder, NavTraverseType how, CN
 Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noexcept
 {
 	CStuckMonitor StuckMonitor{};
-	std::vector<Vector> Nodes{};
 
 	for (;;)
 	{
@@ -412,9 +411,7 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 			continue;
 		}
 
-		auto Path =
-			m_nav.ConcatLocalPath(pev->origin);
-
+		auto& Path = m_nav.m_Segments;
 		if (Path.empty())
 			continue;
 
@@ -437,7 +434,16 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 		}
 
 		default:
-			Detour(Path.front().pos, flApprox);	// the accuracy doesn't matter anymore, we have local NAV.
+			//Detour(Path.front().pos, flApprox);	// the accuracy doesn't matter anymore, we have local NAV.
+			m_Scheduler.Enroll(
+				Task_Move_Walk(
+					Path.front().pos,
+					(Path.front().pos - pev->origin).LengthSquared2D() > (270.0 * 270.0) ? ACT_RUN : ACT_WALK,
+
+					// when we fall back into local NAV, it normally means something is in the way. Hence we need better pathing precision.
+					std::clamp<double>(flApprox / 2.5, 8.0, 16)
+				), TASK_MOVE_WALKING, true);
+
 			break;	// switch
 		}
 
@@ -471,12 +477,17 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 			// Wait and check if we are stucked.
 			if (StuckMonitor.GetDuration() > 1.f && !m_Scheduler.Exist(TASK_MOVE_LADDER))
 			{
-				StuckMonitor.Reset();
-				goto LAB_RECOMPUTE_PATH;
+				//StuckMonitor.Reset();
+				//goto LAB_RECOMPUTE_PATH;
 			}
 		}
 
-	LAB_RECOMPUTE_PATH:;
+		// #INVESTIGATE Can reschedule our path or we are running into pos 0 0 0 nav bug.
+		if (auto it = Path.begin() + 1; it != Path.end() && it->how > NT_SIMPLE)
+		{
+			Path.pop_front();
+			goto LAB_WOP_NEXT;
+		}
 	}
 
 	PlayAnim(ACT_IDLE);

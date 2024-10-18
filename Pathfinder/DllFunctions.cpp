@@ -297,7 +297,7 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 			return MRES_SUPERCEDE;
 		}
 		else
-			TaskScheduler::Enroll(Task_ShowNavPath(nav.ConcatLocalPath(tr.vecEndPos), tr.vecEndPos), (1ull << 0), true);
+			TaskScheduler::Enroll(Task_ShowNavPath(nav.m_Segments, tr.vecEndPos), (1ull << 0), true);
 
 
 		return MRES_SUPERCEDE;
