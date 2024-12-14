@@ -402,6 +402,7 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 		if ((pev->origin - vecTarget).LengthSquared2D() < flApprox * flApprox)
 			break;
 
+	LAB_WOP_START:;
 		co_await TaskScheduler::NextFrame::Rank[4];
 
 		[[unlikely]]
@@ -412,6 +413,18 @@ Task CBaseAI::Task_Plot_WalkOnPath(Vector const vecTarget, double flApprox) noex
 		}
 
 		auto& Path = m_nav.m_Segments;
+
+		// Some nav poses are too close to us. Skip them all.
+		while (!Path.empty() && (Path.front().pos - pev->origin).LengthSquared2D() < flApprox * flApprox)
+			Path.pop_front();
+
+		for (auto& Seg : Path)
+		{
+			// #INVESTIGATE part of nav 0 0 0 bug.
+			if (Seg.pos.LengthSquared() < 5 * 5)
+				goto LAB_WOP_START;
+		}
+
 		if (Path.empty())
 			continue;
 
