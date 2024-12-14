@@ -38,6 +38,24 @@ studio "pw_awp"
 studio "pw_m249"
 studio "pw_sg552"
 studio "pw_m3"
+studio "pw_hegrenade"
+studio "pw_smokegrenade"
+studio "pw_flashbang"
+studio "pw_xm1014"
+studio "pw_mac10"
+studio "pw_tmp"
+studio "pw_p228"
+studio "pw_fiveseven"
+studio "pw_deagle"
+studio "pw_glock18"
+studio "pw_mp5navy"
+studio "pw_g3sg1"
+studio "pw_aug"
+studio "pw_ump45"
+studio "pw_famas"
+studio "pw_p90"
+// studio "p_knife"
+// studio "pw_elite"
 studio "b_usp"
 studio "b_ak47"
 studio "b_galil"
@@ -48,6 +66,20 @@ studio "b_awp"
 studio "b_m249"
 studio "b_sg552"
 studio "b_m3"
+studio "b_xm1014"
+studio "b_mac10"
+studio "b_tmp"
+studio "b_p228"
+studio "b_fiveseven"
+studio "b_glock18"
+studio "b_mp5navy"
+studio "b_g3sg1"
+studio "b_aug"
+studio "b_ump45"
+studio "b_famas"
+studio "b_p90"
+// studio "b_deagle"
+// studio "b_knife"
 }
 
 // 1 animation sequence(s)
@@ -61,5 +93,23 @@ $sequence "rifle_awp" "rifle_awp" fps 30
 $sequence "m249_m249" "m249_m249" fps 30 
 $sequence "mp5_sg552" "mp5_sg552" fps 30 
 $sequence "shotgun_m3" "shotgun_m3" fps 30 
+$sequence "grenade_hegrenade" "grenade_hegrenade" fps 30 
+$sequence "grenade_smokegrenade" "grenade_hegrenade" fps 30 
+$sequence "grenade_flashbang" "grenade_hegrenade" fps 30 
+// $sequence "knife_knife" "knife_knife" fps 30 
+$sequence "m249_xm1014" "m249_xm1014" fps 30 
+$sequence "onehanded_mac10" "onehanded_mac10" fps 30 
+$sequence "onehanded_tmp" "onehanded_tmp" fps 30 
+$sequence "onehanded_p228" "onehanded_p228" fps 30 
+$sequence "onehanded_fiveseven" "onehanded_fiveseven" fps 30 
+$sequence "onehanded_deagle" "onehanded_deagle" fps 30 
+$sequence "onehanded_glock18" "onehanded_glock18" fps 30 
+$sequence "mp5_mp5navy" "mp5_mp5navy" fps 30 
+$sequence "mp5_g3sg1" "mp5_g3sg1" fps 30 
+$sequence "carbine_aug" "carbine_aug" fps 30 
+$sequence "carbine_ump45" "carbine_ump45" fps 30 
+$sequence "carbine_famas" "carbine_famas" fps 30 
+$sequence "carbine_p90" "carbine_p90" fps 30 
+// $sequence "daulpistols_elites" "daulpistols_elites" fps 30 
 
 // End of QC script.
