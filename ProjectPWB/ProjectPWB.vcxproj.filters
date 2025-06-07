@@ -123,6 +123,9 @@
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ConsoleVar.ixx">
       <Filter>CSDK</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.ixx">
+      <Filter>API.Engine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.hpp">
@@ -142,6 +145,9 @@
     </ClInclude>
     <ClInclude Include="..\..\metamod-p\metamod\metamod_api.hpp">
       <Filter>API.Misc</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp">
+      <Filter>API.Engine</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -132,7 +132,7 @@ export void UTIL_ReplaceAll(std::string* str, const std::string_view& from, cons
 
 export struct sv_less_t final
 {
-	constexpr bool operator()(std::string_view const& lhs, std::string_view const& rhs) const noexcept
+	static constexpr bool operator()(std::string_view const& lhs, std::string_view const& rhs) noexcept
 	{
 		return lhs < rhs;
 	}
@@ -144,13 +144,13 @@ export struct sv_iless_t final
 {
 	struct nocase_compare
 	{
-		bool operator()(char c1, char c2) const noexcept
+		static bool operator()(char c1, char c2) noexcept
 		{
 			return std::tolower(c1) < std::tolower(c2);
 		}
 	};
 
-	bool operator()(std::string_view const& lhs, std::string_view const& rhs) const noexcept
+	static bool operator()(std::string_view const& lhs, std::string_view const& rhs) noexcept
 	{
 		return std::ranges::lexicographical_compare(lhs, rhs, nocase_compare{});
 	}

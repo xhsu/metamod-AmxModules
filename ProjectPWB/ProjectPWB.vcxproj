@@ -96,6 +96,7 @@
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.Functions.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\VTFH.ixx" />
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.util.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\vector.ixx" />
@@ -119,6 +120,7 @@
     <ClCompile Include="Plugin.ixx" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp" />
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.hpp" />
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.util.hpp" />
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\vector.hpp" />
