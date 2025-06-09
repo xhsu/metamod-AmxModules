@@ -13,6 +13,9 @@
     <Filter Include="Hydrogenium">
       <UniqueIdentifier>{4f9b1aac-9858-4a46-9966-174f3d1ee7fe}</UniqueIdentifier>
     </Filter>
+    <Filter Include="CSDK">
+      <UniqueIdentifier>{ff962bc1-f23b-4ea9-8f05-1c5df404ea94}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.ixx">
@@ -51,9 +54,6 @@
     <ClCompile Include="..\Common\WinAPI.ixx">
       <Filter>API.Misc</Filter>
     </ClCompile>
-    <ClCompile Include="Application.ixx">
-      <Filter>Sources</Filter>
-    </ClCompile>
     <ClCompile Include="Plugin.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
@@ -71,6 +71,57 @@
     </ClCompile>
     <ClCompile Include="..\Common\UtlString.ixx">
       <Filter>Hydrogenium</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\CBase.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Task.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.Functions.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Platform.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Engine.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\PlayerItem\PlayerItem.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ConditionZero.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\GameRules.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Message.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\VTFH.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="Application.ixx">
+      <Filter>Hydrogenium</Filter>
+    </ClCompile>
+    <ClCompile Include="Hook.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="Hook.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="DllFunc.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Prefab.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Query.ixx">
+      <Filter>CSDK</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

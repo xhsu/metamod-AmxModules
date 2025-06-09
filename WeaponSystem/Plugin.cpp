@@ -3,7 +3,17 @@
 import std;
 import hlsdk;
 
+import Uranus;
+
 import Plugin;
+
+
+// DllFunc.cpp
+extern void fw_GameInit_Post() noexcept;
+extern void fw_GameShutdown_Post() noexcept;
+extern void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) noexcept;
+extern void fw_OnFreeEntPrivateData(edict_t* pEnt) noexcept;
+extern auto fw_ShouldCollide(edict_t* pentTouched, edict_t* pentOther) noexcept -> qboolean;
 
 
 // Receive engine function table from engine.
@@ -12,6 +22,9 @@ void __stdcall GiveFnptrsToDll(enginefuncs_t *pengfuncsFromEngine, globalvars_t 
 {
 	std::memcpy(&g_engfuncs, pengfuncsFromEngine, sizeof(enginefuncs_t));
 	gpGlobals = pGlobals;
+
+	// As early as possible.
+	Uranus::RetrieveUranusLocal();
 }
 
 static int HookGameDLLExportedFn(DLL_FUNCTIONS *pFunctionTable, int *interfaceVersion) noexcept
@@ -102,7 +115,7 @@ static int HookGameDLLExportedFn_Post(DLL_FUNCTIONS *pFunctionTable, int *interf
 {
 	static constexpr DLL_FUNCTIONS gFunctionTable =
 	{
-		.pfnGameInit				= nullptr,
+		.pfnGameInit				= &fw_GameInit_Post,
 		.pfnSpawn					= nullptr,
 		.pfnThink					= nullptr,
 		.pfnUse						= nullptr,
@@ -126,7 +139,7 @@ static int HookGameDLLExportedFn_Post(DLL_FUNCTIONS *pFunctionTable, int *interf
 		.pfnClientPutInServer		= nullptr,
 		.pfnClientCommand			= nullptr,
 		.pfnClientUserInfoChanged	= nullptr,
-		.pfnServerActivate			= nullptr,
+		.pfnServerActivate			= &fw_ServerActivate_Post,
 		.pfnServerDeactivate		= nullptr,
 
 		.pfnPlayerPreThink			= nullptr,
@@ -186,9 +199,9 @@ static int HookGameDLLNewFn(NEW_DLL_FUNCTIONS* pFunctionTable, int* interfaceVer
 {
 	static constexpr NEW_DLL_FUNCTIONS gNewFunctionTable =
 	{
-		.pfnOnFreeEntPrivateData	= nullptr,
+		.pfnOnFreeEntPrivateData	= &fw_OnFreeEntPrivateData,
 		.pfnGameShutdown			= nullptr,
-		.pfnShouldCollide			= nullptr,
+		.pfnShouldCollide			= &fw_ShouldCollide,
 		.pfnCvarValue				= nullptr,
 		.pfnCvarValue2				= nullptr,
 	};
@@ -201,6 +214,35 @@ static int HookGameDLLNewFn(NEW_DLL_FUNCTIONS* pFunctionTable, int* interfaceVer
 	else if (*interfaceVersion != NEW_DLL_FUNCTIONS_VERSION) [[unlikely]]
 	{
 		gpMetaUtilFuncs->pfnLogError(&gPluginInfo, "Function 'HookGameDLLNewFn' called with version mismatch. Expected: %d, receiving: %d.", NEW_DLL_FUNCTIONS_VERSION, *interfaceVersion);
+
+		//! Tell metamod what version we had, so it can figure out who is out of date.
+		*interfaceVersion = NEW_DLL_FUNCTIONS_VERSION;
+		return false;
+	}
+
+	std::memcpy(pFunctionTable, &gNewFunctionTable, sizeof(NEW_DLL_FUNCTIONS));
+	return true;
+}
+
+static int HookGameDLLNewFn_Post(NEW_DLL_FUNCTIONS* pFunctionTable, int* interfaceVersion) noexcept
+{
+	static constexpr NEW_DLL_FUNCTIONS gNewFunctionTable =
+	{
+		.pfnOnFreeEntPrivateData	= nullptr,
+		.pfnGameShutdown			= &fw_GameShutdown_Post,
+		.pfnShouldCollide			= nullptr,
+		.pfnCvarValue				= nullptr,
+		.pfnCvarValue2				= nullptr,
+	};
+
+	if (!pFunctionTable) [[unlikely]]
+	{
+		gpMetaUtilFuncs->pfnLogError(&gPluginInfo, "Function 'HookGameDLLNewFn_Post' called with null 'pFunctionTable' parameter.");
+		return false;
+	}
+	else if (*interfaceVersion != NEW_DLL_FUNCTIONS_VERSION) [[unlikely]]
+	{
+		gpMetaUtilFuncs->pfnLogError(&gPluginInfo, "Function 'HookGameDLLNewFn_Post' called with version mismatch. Expected: %d, receiving: %d.", NEW_DLL_FUNCTIONS_VERSION, *interfaceVersion);
 
 		//! Tell metamod what version we had, so it can figure out who is out of date.
 		*interfaceVersion = NEW_DLL_FUNCTIONS_VERSION;
@@ -451,7 +493,7 @@ inline constexpr META_FUNCTIONS gMetaFunctionTable =
 	.pfnGetEntityAPI2			= &HookGameDLLExportedFn,		// HL SDK2; called before game DLL
 	.pfnGetEntityAPI2_Post		= &HookGameDLLExportedFn_Post,	// META; called after game DLL
 	.pfnGetNewDLLFunctions		= &HookGameDLLNewFn,			// HL SDK2; called before game DLL
-	.pfnGetNewDLLFunctions_Post	= nullptr,						// META; called after game DLL
+	.pfnGetNewDLLFunctions_Post	= &HookGameDLLNewFn_Post,		// META; called after game DLL
 	.pfnGetEngineFunctions		= &HookEngineAPI,				// META; called before HL engine
 	.pfnGetEngineFunctions_Post	= nullptr,						// META; called after HL engine
 };
