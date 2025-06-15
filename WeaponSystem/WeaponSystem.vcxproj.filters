@@ -117,10 +117,25 @@
     <ClCompile Include="DllFunc.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
+    <ClCompile Include="CsWpn.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Prefab.ixx">
       <Filter>CSDK</Filter>
     </ClCompile>
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Query.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="WpnIdxAllocator.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Models.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Wave.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\FileSystem.ixx">
       <Filter>CSDK</Filter>
     </ClCompile>
   </ItemGroup>

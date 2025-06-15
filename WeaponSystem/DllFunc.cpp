@@ -9,8 +9,9 @@ import Message;
 import PlayerItem;
 import Uranus;
 
-import Plugin;
+import FileSystem;
 import Hook;
+import Plugin;
 import WinAPI;
 
 
@@ -28,6 +29,7 @@ void fw_GameInit_Post() noexcept
 
 void fw_GameShutdown_Post() noexcept
 {
+	FileSystem::Shutdown();
 	RestoreInlineHooks();
 	// post
 }

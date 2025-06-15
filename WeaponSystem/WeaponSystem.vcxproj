@@ -89,8 +89,10 @@
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\CBase.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ConditionZero.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Engine.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\FileSystem.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\GameRules.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Message.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Models.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Platform.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Prefab.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Query.ixx" />
@@ -98,6 +100,7 @@
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.Functions.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\VTFH.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Wave.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.util.ixx" />
@@ -112,11 +115,13 @@
     <ClCompile Include="..\Common\WinAPI.cpp" />
     <ClCompile Include="..\Common\WinAPI.ixx" />
     <ClCompile Include="Application.ixx" />
+    <ClCompile Include="CsWpn.cpp" />
     <ClCompile Include="DllFunc.cpp" />
     <ClCompile Include="Hook.cpp" />
     <ClCompile Include="Hook.ixx" />
     <ClCompile Include="Plugin.cpp" />
     <ClCompile Include="Plugin.ixx" />
+    <ClCompile Include="WpnIdxAllocator.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp" />

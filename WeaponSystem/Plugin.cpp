@@ -6,6 +6,7 @@ import hlsdk;
 import Uranus;
 
 import Plugin;
+import FileSystem;
 
 
 // DllFunc.cpp
@@ -25,6 +26,9 @@ void __stdcall GiveFnptrsToDll(enginefuncs_t *pengfuncsFromEngine, globalvars_t 
 
 	// As early as possible.
 	Uranus::RetrieveUranusLocal();
+
+	// This is what ReGameDLL did.
+	FileSystem::Init();
 }
 
 static int HookGameDLLExportedFn(DLL_FUNCTIONS *pFunctionTable, int *interfaceVersion) noexcept
