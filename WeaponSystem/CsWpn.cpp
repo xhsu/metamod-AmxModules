@@ -106,6 +106,8 @@ struct CBasePistol : CPrefabWeapon
 	uint16_t m_usFireEv{};
 
 	qboolean UseDecrement() noexcept override { return true; }
+	int iItemSlot() noexcept override { return T::DAT_SLOT + 1; }
+	float GetMaxSpeed() noexcept override { return T::DAT_MAX_SPEED; }
 
 	void Spawn() noexcept override
 	{
