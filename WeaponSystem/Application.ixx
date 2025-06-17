@@ -140,7 +140,7 @@ struct app_version_t final
 
 static_assert(sizeof(app_version_t) == sizeof(uint32_t));
 
-export inline constexpr auto APP_CRATED = LocalBuildNumber("Mar 01 2004");	// When Condition Zero published.
+export inline constexpr auto APP_CRATED = LocalBuildNumber("Dec 05 2014");	// My first tracable WeaponSystem.sma file.
 export inline constexpr auto BUILD_NUMBER = LocalBuildNumber(__DATE__, APP_CRATED);
 
 export inline constexpr app_version_t APP_VERSION
