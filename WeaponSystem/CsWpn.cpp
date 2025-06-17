@@ -125,10 +125,7 @@ struct CBasePistol : CPrefabWeapon
 
 		if constexpr (requires { T::m_bBurstFire; })
 		{
-			static_assert(std::is_base_of_v<CBasePistol, T>);
-			auto const CRTP = static_cast<T*>(this);
-
-			CRTP->m_bBurstFire = false;
+			CRTP()->m_bBurstFire = false;
 			m_iGlock18ShotsFired = 0;
 			m_flGlock18Shoot = 0;
 		}
@@ -189,10 +186,7 @@ struct CBasePistol : CPrefabWeapon
 	{
 		if constexpr (requires { T::m_bBurstFire; })
 		{
-			static_assert(std::is_base_of_v<CBasePistol, T>);
-			auto const CRTP = static_cast<T*>(this);
-
-			CRTP->m_bBurstFire = false;
+			CRTP()->m_bBurstFire = false;
 			m_iGlock18ShotsFired = 0;
 			m_flGlock18Shoot = 0;
 		}
@@ -273,7 +267,7 @@ struct CBasePistol : CPrefabWeapon
 
 	using CPrefabWeapon::SendWeaponAnim;	// Import the original one as well.
 	// Addition: send wpn anim of the exact name. Won't random from a pool.
-	inline auto SendWeaponAnim(string_view anim, bool bSkipLocal = false) const noexcept -> seq_timing_t const*
+	inline auto SendWeaponAnim(string_view anim, int iBody = 0, bool bSkipLocal = false) const noexcept -> seq_timing_t const*
 	{
 		string_view szViewModel{ T::MODEL_V };
 
@@ -294,7 +288,7 @@ struct CBasePistol : CPrefabWeapon
 			if (bSkipLocal && g_engfuncs.pfnCanSkipPlayer(m_pPlayer->edict()))
 				return std::addressof(AnimInfo);
 
-			gmsgWeaponAnim::Send(m_pPlayer->edict(), AnimInfo.m_iSeqIdx, pev->body);
+			gmsgWeaponAnim::Send(m_pPlayer->edict(), AnimInfo.m_iSeqIdx, 0);
 			return std::addressof(AnimInfo);
 		}
 		catch (...)
@@ -414,7 +408,7 @@ struct CBasePistol : CPrefabWeapon
 		{
 			m_flAccuracy = std::ranges::clamp(
 				// Mark the time of this shot and determine the accuracy modifier based on the last shot fired...
-				T::EXPR_ACCY(this),
+				CRTP()->EXPR_ACCY(),
 				T::DAT_ACCY_RANGE.first,
 				T::DAT_ACCY_RANGE.second
 			);
@@ -470,18 +464,18 @@ struct CBasePistol : CPrefabWeapon
 		auto const vecDir = m_pPlayer->FireBullets3(
 			m_pPlayer->GetGunPosition(),
 			vecFwd,
-			T::EXPR_SPREAD(this),
+			CRTP()->EXPR_SPREAD(),
 			T::DAT_EFF_SHOT_DIST,
 			T::DAT_PENETRATION,
 			T::DAT_BULLET_TYPE,
-			std::lroundf(T::EXPR_DAMAGE(this)),
+			std::lroundf(CRTP()->EXPR_DAMAGE()),
 			T::DAT_RANGE_MODIFIER,
 			m_pPlayer->pev,
 			requires { T::FLAG_IS_PISTOL; },
 			m_pPlayer->random_seed
 		);
 
-		Vector vecDummy{};
+		static Vector vecDummy{};
 		g_engfuncs.pfnPlaybackEvent(
 			FEV_NOTHOST,
 			m_pPlayer->edict(),
@@ -492,6 +486,21 @@ struct CBasePistol : CPrefabWeapon
 			std::lroundf(m_pPlayer->pev->punchangle.pitch * 100.f), std::lroundf(m_pPlayer->pev->punchangle.yaw * 100.f),
 			m_iClip == 0, m_iWeaponState & WPNSTATE_USP_SILENCED
 		);
+
+		// LUNA:
+		// PBE can be consider as the composition of the following:
+		// I. First personal effect
+			// Muzzle flash & DLight - MSG
+			// Gun animation - MSG
+			// Shell ejection - MSG
+			// Smoking gun - ENT
+			// Sound - ev_hldm.cpp
+		// II. Traceline - Make our own FireBullets function?
+			// Trace effect - MSG
+			// Bullet hole - MSG
+			// Debris - MSG
+			// Smoke by tex color - ENT
+			// Sound of bullet hit - emit from Smoke ENT
 
 		m_flNextPrimaryAttack = m_flNextSecondaryAttack = T::DAT_FIRE_INTERVAL;
 		m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + 2.0f;	// Change it to anim time of shooting anim.
@@ -514,7 +523,7 @@ struct CBasePistol : CPrefabWeapon
 			}
 		}
 
-		T::EFFC_RECOIL(this);
+		CRTP()->EFFC_RECOIL();
 	}
 
 	void Reload() noexcept override
@@ -570,7 +579,7 @@ struct CBasePistol : CPrefabWeapon
 
 	void WeaponIdle() noexcept override
 	{
-		ResetEmptySound();
+		//ResetEmptySound();	// LUNA: useless call.
 		m_pPlayer->GetAutoaimVector(AUTOAIM_10DEGREES);
 
 		if (m_flTimeWeaponIdle > 0)
@@ -629,6 +638,10 @@ struct CBasePistol : CPrefabWeapon
 		SendWeaponAnim(pAnimInfo->m_iSeqIdx, false);
 		m_flTimeWeaponIdle = std::max(5.f, pAnimInfo->m_total_length);
 	}
+
+private:
+	__forceinline [[nodiscard]] T* CRTP() noexcept { static_assert(std::is_base_of_v<CBasePistol, T>); return static_cast<T*>(this); }
+	__forceinline [[nodiscard]] T const* CRTP() const noexcept { static_assert(std::is_base_of_v<CBasePistol, T>); return static_cast<T const*>(this); }
 };
 
 struct G18C_VER2 : CBasePistol<G18C_VER2>
@@ -684,37 +697,38 @@ struct G18C_VER2 : CBasePistol<G18C_VER2>
 	static inline constexpr auto DAT_RANGE_MODIFIER = 0.75f;
 	static inline constexpr auto DAT_FIRE_INTERVAL = 0.2f - 0.05f;
 
-	static inline constexpr auto EXPR_DAMAGE = [](CBasePlayerWeapon const* pWeapon) static noexcept {
+	static inline constexpr float EXPR_DAMAGE() noexcept {
 		return 25.f;
-	};
-	static inline constexpr auto EXPR_ACCY = [](CBasePlayerWeapon const* pWeapon) static noexcept {
-		return pWeapon->m_flAccuracy - (0.325f - (gpGlobals->time - pWeapon->m_flLastFire)) * 0.275f;
-	};
-	static inline constexpr auto EXPR_SPREAD = [](CBasePlayerWeapon const* pWeapon) static noexcept {
-		if (pWeapon->m_iWeaponState & WPNSTATE_GLOCK18_BURST_MODE)
+	}
+	inline float EXPR_ACCY() const noexcept {
+		return m_flAccuracy - (0.325f - (gpGlobals->time - m_flLastFire)) * 0.275f;
+	}
+	inline float EXPR_SPREAD() const noexcept
+	{
+		if (m_iWeaponState & WPNSTATE_GLOCK18_BURST_MODE)
 		{
-			if (!(pWeapon->m_pPlayer->pev->flags & FL_ONGROUND))
-				return 1.2f * (1.f - pWeapon->m_flAccuracy);
-			else if (pWeapon->m_pPlayer->pev->velocity.LengthSquared2D() > 0)
-				return 0.185f * (1.f - pWeapon->m_flAccuracy);
-			else if (pWeapon->m_pPlayer->pev->flags & FL_DUCKING)
-				return 0.095f * (1.f - pWeapon->m_flAccuracy);
+			if (!(m_pPlayer->pev->flags & FL_ONGROUND))
+				return 1.2f * (1.f - m_flAccuracy);
+			else if (m_pPlayer->pev->velocity.LengthSquared2D() > 0)
+				return 0.185f * (1.f - m_flAccuracy);
+			else if (m_pPlayer->pev->flags & FL_DUCKING)
+				return 0.095f * (1.f - m_flAccuracy);
 			else
-				return 0.3f * (1.f - pWeapon->m_flAccuracy);
+				return 0.3f * (1.f - m_flAccuracy);
 		}
 		else
 		{
-			if (!(pWeapon->m_pPlayer->pev->flags & FL_ONGROUND))
-				return 1.f * (1.f - pWeapon->m_flAccuracy);
-			else if (pWeapon->m_pPlayer->pev->velocity.LengthSquared2D() > 0)
-				return 0.165f * (1.f - pWeapon->m_flAccuracy);
-			else if (pWeapon->m_pPlayer->pev->flags & FL_DUCKING)
-				return 0.075f * (1.f - pWeapon->m_flAccuracy);
+			if (!(m_pPlayer->pev->flags & FL_ONGROUND))
+				return 1.f * (1.f - m_flAccuracy);
+			else if (m_pPlayer->pev->velocity.LengthSquared2D() > 0)
+				return 0.165f * (1.f - m_flAccuracy);
+			else if (m_pPlayer->pev->flags & FL_DUCKING)
+				return 0.075f * (1.f - m_flAccuracy);
 			else
-				return 0.1f * (1.f - pWeapon->m_flAccuracy);
+				return 0.1f * (1.f - m_flAccuracy);
 		}
-	};
-	static inline constexpr auto EFFC_RECOIL = [](CBasePlayerWeapon const* pWeapon) static noexcept {
+	}
+	static inline constexpr void EFFC_RECOIL() noexcept {
 		//pWeapon->m_pPlayer->pev->punchangle.pitch -= 2;
 		// G18 in CS doesn't have any recoil at all.
 	};
@@ -782,38 +796,39 @@ struct USP2 : CBasePistol<USP2>
 	static inline constexpr auto DAT_RANGE_MODIFIER = 0.79f;
 	static inline constexpr auto DAT_FIRE_INTERVAL = 0.225f - 0.075f;
 
-	static inline constexpr auto EXPR_DAMAGE = [](CBasePlayerWeapon const* pWeapon) static noexcept {
-		return (pWeapon->m_iWeaponState & WPNSTATE_USP_SILENCED) ? 30.f : 34.f;
+	inline float EXPR_DAMAGE() const noexcept {
+		return (m_iWeaponState & WPNSTATE_USP_SILENCED) ? 30.f : 34.f;
 	};
-	static inline constexpr auto EXPR_ACCY = [](CBasePlayerWeapon const* pWeapon) static noexcept {
-		return pWeapon->m_flAccuracy - (0.3f - (gpGlobals->time - pWeapon->m_flLastFire)) * 0.275f;
+	inline float EXPR_ACCY() const noexcept {
+		return m_flAccuracy - (0.3f - (gpGlobals->time - m_flLastFire)) * 0.275f;
 	};
-	static inline constexpr auto EXPR_SPREAD = [](CBasePlayerWeapon const* pWeapon) static noexcept {
-		if (pWeapon->m_iWeaponState & WPNSTATE_USP_SILENCED)
+	inline float EXPR_SPREAD() const noexcept
+	{
+		if (m_iWeaponState & WPNSTATE_USP_SILENCED)
 		{
-			if (!(pWeapon->m_pPlayer->pev->flags & FL_ONGROUND))
-				return 1.3f * (1.f - pWeapon->m_flAccuracy);
-			else if (pWeapon->m_pPlayer->pev->velocity.Length2D() > 0)
-				return 0.25f * (1.f - pWeapon->m_flAccuracy);
-			else if (pWeapon->m_pPlayer->pev->flags & FL_DUCKING)
-				return 0.125f * (1.f - pWeapon->m_flAccuracy);
+			if (!(m_pPlayer->pev->flags & FL_ONGROUND))
+				return 1.3f * (1.f - m_flAccuracy);
+			else if (m_pPlayer->pev->velocity.Length2D() > 0)
+				return 0.25f * (1.f - m_flAccuracy);
+			else if (m_pPlayer->pev->flags & FL_DUCKING)
+				return 0.125f * (1.f - m_flAccuracy);
 			else
-				return 0.15f * (1.f - pWeapon->m_flAccuracy);
+				return 0.15f * (1.f - m_flAccuracy);
 		}
 		else
 		{
-			if (!(pWeapon->m_pPlayer->pev->flags & FL_ONGROUND))
-				return 1.2f * (1.f - pWeapon->m_flAccuracy);
-			else if (pWeapon->m_pPlayer->pev->velocity.Length2D() > 0)
-				return 0.225f * (1.f - pWeapon->m_flAccuracy);
-			else if (pWeapon->m_pPlayer->pev->flags & FL_DUCKING)
-				return 0.08f * (1.f - pWeapon->m_flAccuracy);
+			if (!(m_pPlayer->pev->flags & FL_ONGROUND))
+				return 1.2f * (1.f - m_flAccuracy);
+			else if (m_pPlayer->pev->velocity.Length2D() > 0)
+				return 0.225f * (1.f - m_flAccuracy);
+			else if (m_pPlayer->pev->flags & FL_DUCKING)
+				return 0.08f * (1.f - m_flAccuracy);
 			else
-				return 0.1f * (1.f - pWeapon->m_flAccuracy);
+				return 0.1f * (1.f - m_flAccuracy);
 		}
 	};
-	static inline constexpr auto EFFC_RECOIL = [](CBasePlayerWeapon const* pWeapon) static noexcept {
-		pWeapon->m_pPlayer->pev->punchangle.pitch -= 2;
+	inline void EFFC_RECOIL() const noexcept {
+		m_pPlayer->pev->punchangle.pitch -= 2;
 	};
 
 	static inline constexpr auto FLAG_IS_PISTOL = true;
