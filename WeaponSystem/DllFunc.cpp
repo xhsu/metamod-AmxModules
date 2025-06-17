@@ -7,6 +7,7 @@ import Engine;
 import GameRules;
 import Message;
 import PlayerItem;
+import Prefab;
 import Uranus;
 
 import FileSystem;
@@ -56,10 +57,15 @@ void fw_OnFreeEntPrivateData(edict_t* pEdict) noexcept
 			return;
 		}
 
-		[[unlikely]]
-		if (auto const pPrefab = dynamic_cast<CPrefabWeapon*>(pEntity); pPrefab != nullptr)
+		// No [[unlikely]] prediction anymore, because it's actually very likely - RTTI filtered.
+		if (auto const pWeapon = dynamic_cast<CPrefabWeapon*>(pEntity); pWeapon != nullptr)
 		{
-			std::destroy_at(pPrefab);	// Thanks to C++17 we can finally patch up this old game.
+			std::destroy_at(pWeapon);	// Thanks to C++17 we can finally patch up this old game.
+			gpMetaGlobals->mres = MRES_SUPERCEDE;
+		}
+		else if (auto const pPrefab = dynamic_cast<Prefab_t*>(pEntity); pPrefab != nullptr)
+		{
+			std::destroy_at(pWeapon);
 			gpMetaGlobals->mres = MRES_SUPERCEDE;
 		}
 	}
@@ -80,10 +86,16 @@ qboolean fw_ShouldCollide(edict_t* pentTouched, edict_t* pentOther) noexcept
 
 	EHANDLE<CBaseEntity> pEntity(pentTouched);
 
+	// No [[unlikely]] prediction anymore, because it's actually very likely - RTTI filtered.
 	if (auto const pNeoWpn = pEntity.As<CPrefabWeapon>(); pNeoWpn)
 	{
 		gpMetaGlobals->mres = MRES_SUPERCEDE;
 		return pNeoWpn->ShouldCollide(pentOther);
+	}
+	else if (auto const pPrefab = pEntity.As<Prefab_t>(); pPrefab != nullptr)
+	{
+		gpMetaGlobals->mres = MRES_SUPERCEDE;
+		return pPrefab->ShouldCollide(pentOther);
 	}
 
 	return 0;
