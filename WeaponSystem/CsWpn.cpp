@@ -11,13 +11,16 @@ import hlsdk;
 import UtlRandom;
 import UtlString;
 
+import CBase;
 import FileSystem;
 import Message;
 import Models;
 import PlayerItem;
 import Prefab;
 import Query;
+import Task;
 import Uranus;
+import ZBot;
 
 using std::strcpy;
 using std::strcmp;	// #MSVC_BUG_STDCOMPAT
@@ -30,21 +33,31 @@ using std::vector;
 
 using namespace std::literals;
 
+enum EWeaponTaskFlags2 : std::uint64_t
+{
+	TASK_KEY_MONITOR_LMB = (1ull << 0),
+	TASK_KEY_MONITOR_RMB = (1ull << 1),
+	TASK_KEY_MONITOR_R = (1ull << 2),
+
+	TASK_KEY_MONITORS = 0b1111'1111,
+
+	TASK_BEHAVIOR_DRAW = (1ull << 8),
+	TASK_BEHAVIOR_RELOAD = (1ull << 9),
+	TASK_BEHAVIOR_IDLE = (1ull << 10),
+	TASK_BEHAVIOR_SHOOT = (1ull << 11),
+	TASK_BEHAVIOR_HOLSTER = (1ull << 12),
+
+	TASK_BEHAVIORS = 0b1111'1111'0000'0000,
+};
+
+extern Vector2D CS_FireBullets3(
+	CBasePlayer* pAttacker, CBasePlayerItem* pInflictor,
+	float flSpread, float flDistance,
+	int iPenetration, int iBulletType, float flDamage, float flRangeModifier) noexcept;
+
 consteval float UTIL_WeaponTimeBase() { return 0.f; }
 
-#define LOUD_GUN_VOLUME             1000
-#define NORMAL_GUN_VOLUME           600
-#define QUIET_GUN_VOLUME            200
-
-#define BIG_EXPLOSION_VOLUME        2048
-#define NORMAL_EXPLOSION_VOLUME     1024
-#define SMALL_EXPLOSION_VOLUME      512
-
-#define BRIGHT_GUN_FLASH            512
-#define NORMAL_GUN_FLASH            256
-#define DIM_GUN_FLASH               128
-
-static auto GetAnimsFromKeywords(string_view szModel, span<string_view const> rgszKeywords, span<string_view const> rgszMustInc = {}, span<string_view const> rgszMustExc = {}) noexcept -> vector<seq_timing_t const*>
+auto GetAnimsFromKeywords(string_view szModel, span<string_view const> rgszKeywords, span<string_view const> rgszMustInc = {}, span<string_view const> rgszMustExc = {}) noexcept -> vector<seq_timing_t const*>
 {
 	// #UPDATE_AT_CPP26 transparant at
 	auto& ModelInfo = gStudioInfo.find(szModel)->second;
@@ -108,6 +121,8 @@ struct CBasePistol : CPrefabWeapon
 	qboolean UseDecrement() noexcept override { return true; }
 	int iItemSlot() noexcept override { return T::DAT_SLOT + 1; }
 	float GetMaxSpeed() noexcept override { return T::DAT_MAX_SPEED; }
+	//void Think() noexcept final {}
+	//void ItemPostFrame() noexcept final { m_Scheduler.Think(); }
 
 	void Spawn() noexcept override
 	{
@@ -135,6 +150,8 @@ struct CBasePistol : CPrefabWeapon
 
 		// extend
 		__super::Spawn();
+
+		m_Scheduler.Policy() = ESchedulerPolicy::UNORDERED;
 	}
 
 	void Precache() noexcept override
@@ -424,11 +441,8 @@ struct CBasePistol : CPrefabWeapon
 				m_flNextPrimaryAttack = 0.2f;
 			}
 
-			// #TODO_ZBOTS
-			//if (TheBots)
-			//{
-			//	TheBots->OnEvent(EVENT_WEAPON_FIRED_ON_EMPTY, m_pPlayer);
-			//}
+			if (ZBot::Manager())
+				ZBot::Manager()->OnEvent(EVENT_WEAPON_FIRED_ON_EMPTY, m_pPlayer);
 
 			return;
 		}
@@ -461,31 +475,36 @@ struct CBasePistol : CPrefabWeapon
 		auto const [vecFwd, vecRight, vecUp]
 			= (m_pPlayer->pev->v_angle + m_pPlayer->pev->punchangle).AngleVectors();
 
-		auto const vecDir = m_pPlayer->FireBullets3(
-			m_pPlayer->GetGunPosition(),
-			vecFwd,
-			CRTP()->EXPR_SPREAD(),
-			T::DAT_EFF_SHOT_DIST,
-			T::DAT_PENETRATION,
-			T::DAT_BULLET_TYPE,
-			std::lroundf(CRTP()->EXPR_DAMAGE()),
-			T::DAT_RANGE_MODIFIER,
-			m_pPlayer->pev,
-			requires { T::FLAG_IS_PISTOL; },
-			m_pPlayer->random_seed
+		//auto const vecDir = m_pPlayer->FireBullets3(
+		//	m_pPlayer->GetGunPosition(),
+		//	vecFwd,
+		//	CRTP()->EXPR_SPREAD(),
+		//	T::DAT_EFF_SHOT_DIST,
+		//	T::DAT_PENETRATION,
+		//	T::DAT_BULLET_TYPE,
+		//	std::lroundf(CRTP()->EXPR_DAMAGE()),
+		//	T::DAT_RANGE_MODIFIER,
+		//	m_pPlayer->pev,
+		//	requires { T::FLAG_IS_PISTOL; },
+		//	m_pPlayer->random_seed
+		//);
+		auto const vecDir = CS_FireBullets3(
+			m_pPlayer, this,
+			CRTP()->EXPR_SPREAD(), T::DAT_EFF_SHOT_DIST, T::DAT_PENETRATION,
+			T::DAT_BULLET_TYPE, CRTP()->EXPR_DAMAGE(), T::DAT_RANGE_MODIFIER
 		);
 
-		static Vector vecDummy{};
-		g_engfuncs.pfnPlaybackEvent(
-			FEV_NOTHOST,
-			m_pPlayer->edict(),
-			m_usFireEv,
-			0,
-			vecDummy, vecDummy,
-			vecDir.x, vecDir.y,
-			std::lroundf(m_pPlayer->pev->punchangle.pitch * 100.f), std::lroundf(m_pPlayer->pev->punchangle.yaw * 100.f),
-			m_iClip == 0, m_iWeaponState & WPNSTATE_USP_SILENCED
-		);
+		//static Vector vecDummy{};
+		//g_engfuncs.pfnPlaybackEvent(
+		//	FEV_NOTHOST,
+		//	m_pPlayer->edict(),
+		//	m_usFireEv,
+		//	0,
+		//	vecDummy, vecDummy,
+		//	vecDir.x, vecDir.y,
+		//	std::lroundf(m_pPlayer->pev->punchangle.pitch * 100.f), std::lroundf(m_pPlayer->pev->punchangle.yaw * 100.f),
+		//	m_iClip == 0, m_iWeaponState & WPNSTATE_USP_SILENCED
+		//);
 
 		// LUNA:
 		// PBE can be consider as the composition of the following:

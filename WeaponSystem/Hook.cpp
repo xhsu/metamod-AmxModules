@@ -12,6 +12,7 @@ struct G18C_VER2;
 extern template void LINK_ENTITY_TO_CLASS<G18C_VER2>(entvars_t* pev) noexcept;
 struct USP2;
 extern template void LINK_ENTITY_TO_CLASS<USP2>(entvars_t* pev) noexcept;
+//
 
 
 PFN_ENTITYINIT __cdecl OrpheuF_GetDispatch(char const* pszClassName) noexcept

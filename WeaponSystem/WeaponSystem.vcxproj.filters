@@ -138,6 +138,27 @@
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\FileSystem.ixx">
       <Filter>CSDK</Filter>
     </ClCompile>
+    <ClCompile Include="FireBullets.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="Decal.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ZBot.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="Tutor.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="Resources.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Sprite.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="Effects.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp">

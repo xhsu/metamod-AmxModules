@@ -96,11 +96,13 @@
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Platform.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Prefab.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Query.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Sprite.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Task.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.Functions.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\VTFH.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Wave.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ZBot.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.util.ixx" />
@@ -116,11 +118,16 @@
     <ClCompile Include="..\Common\WinAPI.ixx" />
     <ClCompile Include="Application.ixx" />
     <ClCompile Include="CsWpn.cpp" />
+    <ClCompile Include="Decal.ixx" />
     <ClCompile Include="DllFunc.cpp" />
+    <ClCompile Include="Effects.cpp" />
+    <ClCompile Include="FireBullets.cpp" />
     <ClCompile Include="Hook.cpp" />
     <ClCompile Include="Hook.ixx" />
     <ClCompile Include="Plugin.cpp" />
     <ClCompile Include="Plugin.ixx" />
+    <ClCompile Include="Resources.ixx" />
+    <ClCompile Include="Tutor.cpp" />
     <ClCompile Include="WpnIdxAllocator.cpp" />
   </ItemGroup>
   <ItemGroup>

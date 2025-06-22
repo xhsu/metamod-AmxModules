@@ -3,18 +3,22 @@
 import std;
 import hlsdk;
 
+import Task;
 import Uranus;
 
 import Plugin;
-import FileSystem;
 
 
 // DllFunc.cpp
 extern void fw_GameInit_Post() noexcept;
 extern void fw_GameShutdown_Post() noexcept;
 extern void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) noexcept;
+extern void fw_ServerDeactivate_Post() noexcept;
+extern auto fw_Spawn(edict_t* pEdict) noexcept -> qboolean;
+extern void fw_UpdateClientData_Post(const edict_t* ent, qboolean sendweapons, clientdata_t* cd) noexcept;
 extern void fw_OnFreeEntPrivateData(edict_t* pEnt) noexcept;
 extern auto fw_ShouldCollide(edict_t* pentTouched, edict_t* pentOther) noexcept -> qboolean;
+//
 
 
 // Receive engine function table from engine.
@@ -23,12 +27,6 @@ void __stdcall GiveFnptrsToDll(enginefuncs_t *pengfuncsFromEngine, globalvars_t 
 {
 	std::memcpy(&g_engfuncs, pengfuncsFromEngine, sizeof(enginefuncs_t));
 	gpGlobals = pGlobals;
-
-	// As early as possible.
-	Uranus::RetrieveUranusLocal();
-
-	// This is what ReGameDLL did.
-	FileSystem::Init();
 }
 
 static int HookGameDLLExportedFn(DLL_FUNCTIONS *pFunctionTable, int *interfaceVersion) noexcept
@@ -36,7 +34,7 @@ static int HookGameDLLExportedFn(DLL_FUNCTIONS *pFunctionTable, int *interfaceVe
 	static constexpr DLL_FUNCTIONS gFunctionTable =
 	{
 		.pfnGameInit				= nullptr,
-		.pfnSpawn					= nullptr,
+		.pfnSpawn					= &fw_Spawn,
 		.pfnThink					= nullptr,
 		.pfnUse						= nullptr,
 		.pfnTouch					= nullptr,
@@ -144,12 +142,12 @@ static int HookGameDLLExportedFn_Post(DLL_FUNCTIONS *pFunctionTable, int *interf
 		.pfnClientCommand			= nullptr,
 		.pfnClientUserInfoChanged	= nullptr,
 		.pfnServerActivate			= &fw_ServerActivate_Post,
-		.pfnServerDeactivate		= nullptr,
+		.pfnServerDeactivate		= &fw_ServerDeactivate_Post,
 
 		.pfnPlayerPreThink			= nullptr,
 		.pfnPlayerPostThink			= nullptr,
 
-		.pfnStartFrame				= nullptr,
+		.pfnStartFrame				= &TaskScheduler::Think,
 		.pfnParmsNewLevel			= nullptr,
 		.pfnParmsChangeLevel		= nullptr,
 
@@ -167,7 +165,7 @@ static int HookGameDLLExportedFn_Post(DLL_FUNCTIONS *pFunctionTable, int *interf
 		.pfnPM_FindTextureType		= nullptr,
 
 		.pfnSetupVisibility			= nullptr,
-		.pfnUpdateClientData		= nullptr,
+		.pfnUpdateClientData		= &fw_UpdateClientData_Post,
 		.pfnAddToFullPack			= nullptr,
 		.pfnCreateBaseline			= nullptr,
 		.pfnRegisterEncoders		= nullptr,

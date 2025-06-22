@@ -3,14 +3,20 @@ import hlsdk;
 
 import CBase;
 import ConditionZero;
+import Decal;
 import Engine;
+import FileSystem;
 import GameRules;
 import Message;
 import PlayerItem;
 import Prefab;
+import Resources;
+import Task;
 import Uranus;
+import ZBot;
 
-import FileSystem;
+import Sprite;
+
 import Hook;
 import Plugin;
 import WinAPI;
@@ -19,12 +25,20 @@ import WinAPI;
 // Hook.cpp
 extern void DeployInlineHooks() noexcept;
 extern void RestoreInlineHooks() noexcept;
+//
+
+static bool g_bShouldPrecache = true;
 
 
 void fw_GameInit_Post() noexcept
 {
+	Uranus::RetrieveUranusLocal();	// As early as possible.
+	FileSystem::Init();
 	Engine::Init();	// Get engine build number
+	TaskScheduler::Policy() = ESchedulerPolicy::UNORDERED;	// It is very likely that we don't need to have it sorted.
+
 	DeployInlineHooks();
+
 	// post
 }
 
@@ -37,10 +51,54 @@ void fw_GameShutdown_Post() noexcept
 
 void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) noexcept
 {
+	// post
+
 	RetrieveMessageHandles();
 	RetrieveGameRules();
 	RetrieveConditionZeroVar();
+	Decal::RetrieveIndices();
+	ZBot::RetrieveManager();
+}
+
+void fw_ServerDeactivate_Post() noexcept
+{
 	// post
+
+	// Precache should be done across on every map change.
+	g_bShouldPrecache = true;
+
+	// CGameRules class is re-install every map change. Hence we should re-hook it everytime.
+	g_pGameRules = nullptr;
+
+	// Remove ALL existing tasks.
+	TaskScheduler::Clear();
+}
+
+auto fw_Spawn(edict_t* pEdict) noexcept -> qboolean
+{
+	// pre
+	gpMetaGlobals->mres = MRES_IGNORED;
+
+	[[likely]]
+	if (!g_bShouldPrecache)
+		return 0;
+
+	// plugin_precache
+
+	Resource::Precache();
+
+	g_bShouldPrecache = false;
+	return 0;
+}
+
+void fw_UpdateClientData_Post(const edict_t* ent, qboolean sendweapons, clientdata_t* cd) noexcept
+{
+	// post
+
+	if (cd->m_iId == WEAPON_USP)
+	{
+		cd->m_iId = 0;
+	}
 }
 
 void fw_OnFreeEntPrivateData(edict_t* pEdict) noexcept
@@ -65,7 +123,7 @@ void fw_OnFreeEntPrivateData(edict_t* pEdict) noexcept
 		}
 		else if (auto const pPrefab = dynamic_cast<Prefab_t*>(pEntity); pPrefab != nullptr)
 		{
-			std::destroy_at(pWeapon);
+			std::destroy_at(pPrefab);
 			gpMetaGlobals->mres = MRES_SUPERCEDE;
 		}
 	}
