@@ -44,6 +44,7 @@ inline Resource::Add SFX_RICO_METAL[] =
 };
 
 extern edict_t* CreateWallPuff(TraceResult const& tr) noexcept;
+extern edict_t* CreateSpark3D(TraceResult const& tr) noexcept;
 
 static inline Task VFX_BulletImpact(Vector const vecSrc, TraceResult const tr, char cTextureType) noexcept
 {
@@ -59,7 +60,7 @@ static inline Task VFX_BulletImpact(Vector const vecSrc, TraceResult const tr, c
 	{
 	case CHAR_TEX_METAL:
 	case CHAR_TEX_VENT:
-		// Spark MDL
+		CreateSpark3D(tr);
 		break;
 
 	case CHAR_TEX_GRATE:

@@ -17,9 +17,8 @@ enum ETaskFlags : std::uint64_t
 	TASK_SCALING			= (1ull << 3),
 	TASK_COLOR_DRIFT		= (1ull << 4),
 	TASK_REFLECTING_FLAME	= (1ull << 5),
-	TASK_IGNITE				= (1ull << 6),
-	TASK_SUFFOCATION		= (1ull << 7),
-	TASK_FOLLOWING			= (1ull << 8),
+	TASK_FOLLOWING			= (1ull << 6),
+	TASK_TIME_OUT			= (1ull << 7),
 };
 
 inline Resource::Add g_WallPuffs[] =
@@ -44,7 +43,7 @@ inline Resource::Add g_PistolSmokes[] =
 };
 
 
-Task Task_SpritePlayOnce(entvars_t* const pev, short const FRAME_COUNT, double const FPS) noexcept
+static Task Task_SpritePlayOnce(entvars_t* const pev, short const FRAME_COUNT, double const FPS) noexcept
 {
 	short iFrame = (short)std::clamp(pev->frame, 0.f, float(FRAME_COUNT - 1));
 
@@ -60,7 +59,7 @@ Task Task_SpritePlayOnce(entvars_t* const pev, short const FRAME_COUNT, double c
 	pev->flags |= FL_KILLME;
 }
 
-Task Task_FadeOut(entvars_t* const pev, float const AWAIT, float const DECAY, float const ROLL, float const SCALE_INC) noexcept
+static Task Task_FadeOut(entvars_t* const pev, float const AWAIT, float const DECAY, float const ROLL, float const SCALE_INC) noexcept
 {
 	if (AWAIT > 0)
 		co_await AWAIT;
@@ -78,6 +77,13 @@ Task Task_FadeOut(entvars_t* const pev, float const AWAIT, float const DECAY, fl
 		pev->angles.roll += ROLL;
 		pev->scale = flOriginalScale * (1.f + flPercentage * SCALE_INC);	// fade out by zooming the SPR.
 	}
+
+	pev->flags |= FL_KILLME;
+}
+
+static Task Task_Remove(entvars_t* const pev, float const TIME) noexcept
+{
+	co_await TIME;
 
 	pev->flags |= FL_KILLME;
 }
@@ -194,4 +200,55 @@ struct CGunSmoke : Prefab_t
 edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol) noexcept
 {
 	return CGunSmoke::Create(pPlayer, bIsPistol)->edict();
+}
+
+struct CSpark3D : Prefab_t
+{
+	static inline constexpr char CLASSNAME[] = "env_spark_3d";
+	static inline Resource::Add SPARK_MODEL{ "models/AirSupport/m_flash1.mdl" };
+	static inline constexpr auto HOLD_TIME = 0.07f;
+
+	void Spawn() noexcept override
+	{
+		pev->solid = SOLID_NOT;
+		pev->movetype = MOVETYPE_NONE;
+		pev->gravity = 0;
+		pev->rendermode = kRenderTransAdd;
+		pev->renderfx = kRenderFxNone;
+		pev->renderamt = UTIL_Random(192.f, 255.f);
+
+		auto const iValue = UTIL_Random(0, 5);
+		switch (iValue)
+		{
+		case 0:
+		case 1:
+		case 2:
+		case 3:
+			pev->body = 0;
+			pev->skin = iValue;
+			break;
+
+		case 4:
+			pev->body = 1;
+			break;
+
+		case 5:
+			pev->body = 2;
+			break;
+
+		default:
+			std::unreachable();
+		}
+
+		g_engfuncs.pfnSetModel(edict(), SPARK_MODEL);
+		g_engfuncs.pfnSetOrigin(edict(), pev->origin);
+		g_engfuncs.pfnSetSize(edict(), Vector::Zero(), Vector::Zero());
+
+		m_Scheduler.Enroll(Task_Remove(pev, HOLD_TIME), TASK_TIME_OUT);
+	}
+};
+
+edict_t* CreateSpark3D(TraceResult const& tr) noexcept
+{
+	return Prefab_t::Create<CSpark3D>(tr.vecEndPos, (-tr.vecPlaneNormal).VectorAngles())->edict();
 }
