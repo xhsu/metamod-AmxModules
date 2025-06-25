@@ -19,7 +19,7 @@ enum ETaskFlags : std::uint64_t
 	TASK_REFLECTING_FLAME	= (1ull << 5),
 	TASK_IGNITE				= (1ull << 6),
 	TASK_SUFFOCATION		= (1ull << 7),
-	TASK_FLYING				= (1ull << 8),
+	TASK_FOLLOWING			= (1ull << 8),
 };
 
 inline Resource::Add g_WallPuffs[] =
@@ -138,4 +138,60 @@ struct CWallPuff : Prefab_t
 edict_t* CreateWallPuff(TraceResult const& tr) noexcept
 {
 	return CWallPuff::Create(tr)->edict();
+}
+
+struct CGunSmoke : Prefab_t
+{
+	static inline constexpr char CLASSNAME[] = "env_gun_smoke";
+	static inline constexpr double FPS = 30.0;
+
+
+	CGunSmoke(CBasePlayer* pPlayer, bool bIsPistol) noexcept : m_pPlayer{ pPlayer }, m_bIsPistol{ bIsPistol } {}
+
+	void Spawn() noexcept override
+	{
+		auto const flLightness = UTIL_Random(1.0, 48.0);
+
+		pev->rendermode = kRenderTransAdd;
+		pev->renderamt = UTIL_Random(48.f, 72.f);	// Alpha?
+		pev->rendercolor = Vector(0xD1, 0xC5, 0x9F);	// Color. Cannot be 0x000000
+		pev->frame = 0;
+
+		pev->solid = SOLID_NOT;
+		pev->movetype = MOVETYPE_NOCLIP;
+		pev->gravity = 0;
+		pev->scale = UTIL_Random(0.6f, 0.75f);
+
+		auto const& GunSmokeSpr = m_bIsPistol ? UTIL_GetRandomOne(g_PistolSmokes) : UTIL_GetRandomOne(g_RifleSmokes);
+		g_engfuncs.pfnSetModel(edict(), GunSmokeSpr);
+
+		g_engfuncs.pfnSetOrigin(edict(), pev->origin);
+
+		m_Scheduler.Enroll(Task_SpritePlayOnce(pev, GoldSrc::SpriteInfo[GunSmokeSpr.m_pszName]->m_iNumOfFrames, FPS), TASK_ANIMATION);
+		m_Scheduler.Enroll(Task_FadeOut(pev, 0.f, 1.f, 0.07f, UTIL_Random(0.65f, 0.85f)), TASK_FADE_OUT);
+	}
+
+	static CGunSmoke* Create(CBasePlayer* pPlayer, bool bIsPistol) noexcept
+	{
+		auto const [pEdict, pPrefab]
+			= UTIL_CreateNamedPrefab<CGunSmoke>(pPlayer, bIsPistol);
+
+		auto&& [fwd, right, up]
+			= (pPlayer->pev->v_angle + pPlayer->pev->punchangle).AngleVectors();
+
+		pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * -9 + fwd * 32 + right * 8;
+
+		pPrefab->Spawn();
+		pPrefab->pev->nextthink = 0.1f;
+
+		return pPrefab;
+	}
+
+	CBasePlayer* m_pPlayer{};
+	bool m_bIsPistol{};
+};
+
+edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol) noexcept
+{
+	return CGunSmoke::Create(pPlayer, bIsPistol)->edict();
 }

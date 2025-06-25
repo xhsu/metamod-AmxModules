@@ -52,6 +52,8 @@ enum EWeaponTaskFlags2 : std::uint64_t
 	TASK_ALL_WEAKS = TASK_ALL_BEHAVIORS << 8,
 };
 
+extern edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol) noexcept;
+
 extern Vector2D CS_FireBullets3(
 	CBasePlayer* pAttacker, CBasePlayerItem* pInflictor,
 	float flSpread, float flDistance,
@@ -127,6 +129,21 @@ extern Vector2D CS_FireBullets3(
 		| std::views::filter(fnFilter)
 		| std::views::transform([](auto& pr) static noexcept { return std::addressof(pr.second); })
 		| std::ranges::to<std::vector>();
+}
+
+[[nodiscard]] static vector<string> CollectSounds(string_view szPrefix) noexcept
+{
+	vector<string> rgszSoundPaths{};
+
+	for (int i = 0; i < 128; ++i)
+	{
+		auto const szPath = std::format("sound/{}{}.wav", szPrefix, i);
+
+		if (FileSystem::m_pObject->FileExists(szPath.c_str()))
+			rgszSoundPaths.emplace_back(std::format("{}{}.wav", szPrefix, i));
+	}
+
+	return rgszSoundPaths;
 }
 
 template <typename CWeapon, typename AnimDat>
@@ -270,6 +287,9 @@ struct CBasePistol : CPrefabWeapon
 
 		for (auto&& file : T::SOUND_ALL)
 			g_engfuncs.pfnPrecacheSound(file);
+
+		for (auto&& file : CRTP()->EXPR_FIRING_SND())
+			g_engfuncs.pfnPrecacheSound(file.c_str());
 
 		m_iShellId = /*m_iShell =*/ g_engfuncs.pfnPrecacheModel(T::MODEL_SHELL);
 		m_usFireEv = g_engfuncs.pfnPrecacheEvent(1, T::EV_FIRE);
@@ -538,6 +558,12 @@ struct CBasePistol : CPrefabWeapon
 		{
 			m_pPlayer->m_bShieldDrawn = false;
 			m_iWeaponState &= ~WPNSTATE_SHIELD_DRAWN;
+
+			if constexpr (requires { T::FLAG_SECATK_SILENCER; })
+			{
+				if (m_pPlayer->HasShield())
+					m_iWeaponState &= ~WPNSTATE_USP_SILENCED;
+			}
 		}
 
 		if constexpr (requires { T::FLAG_DUAL_WIELDING; })
@@ -692,6 +718,38 @@ struct CBasePistol : CPrefabWeapon
 		}
 	}
 
+	Task Task_Shoot() noexcept
+	{
+		CRTP()->EFFC_SND_FIRING();
+
+		co_await TaskScheduler::NextFrame::Rank[0];
+		if (!m_pPlayer->IsAlive())
+			co_return;
+
+		float flRadModifier = 1.f;
+		if constexpr (requires { T::FLAG_SECATK_SILENCER; })
+		{
+			if (m_iWeaponState & (WPNSTATE_USP_SILENCED | WPNSTATE_M4A1_SILENCED))
+				flRadModifier = 0.5f;
+		}
+		if constexpr (T::PROTOTYPE_ID == WEAPON_TMP)
+			flRadModifier = 0.4f;
+
+		UTIL_DLight(m_pPlayer->GetGunPosition(), 4.5f * flRadModifier, { 255, 150, 15 }, 255, 8, 60);
+
+		co_await TaskScheduler::NextFrame::Rank[0];
+		if (!m_pPlayer->IsAlive())
+			co_return;
+
+		EjectBrassLate();
+
+		co_await TaskScheduler::NextFrame::Rank[0];
+		if (!m_pPlayer->IsAlive())
+			co_return;
+
+		CreateGunSmoke(m_pPlayer, requires { T::FLAG_IS_PISTOL; });
+	}
+
 	void PrimaryAttack() noexcept override
 	{
 		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
@@ -779,11 +837,11 @@ struct CBasePistol : CPrefabWeapon
 		// LUNA:
 		// PBE can be consider as the composition of the following:
 		// I. First personal effect
-			// [ ] Muzzle flash & DLight - MSG
-			// [ ] Gun animation - MSG
-			// [ ] Shell ejection - MSG
-			// [ ] Smoking gun - ENT
-			// [ ] Sound - ev_hldm.cpp
+			// [X] Muzzle flash & DLight - MSG
+			// [X] Gun animation - MSG
+			// [X] Shell ejection - EjectBrassLate()
+			// [X] Smoking gun - ENT
+			// [X] Sound - ev_hldm.cpp
 		// II. Traceline - Make our own FireBullets function?
 			// [ ] Trace effect - MSG
 			// [X] Bullet hole - MSG
@@ -807,7 +865,6 @@ struct CBasePistol : CPrefabWeapon
 		}
 
 		m_flTimeWeaponIdle = pShootingAnim->m_total_length;	// Change it to anim time of shooting anim.
-		m_Scheduler.Enroll([flTime = pShootingAnim->m_total_length]() noexcept -> Task { co_await flTime; }(), TASK_ANIMATION, true);
 		m_Scheduler.Enroll(Task_WeaponAnim(pShootingAnim), TASK_ANIMATION, true);
 
 		/*
@@ -823,12 +880,14 @@ struct CBasePistol : CPrefabWeapon
 			if (m_iWeaponState & WPNSTATE_GLOCK18_BURST_MODE)
 			{
 				// Fire off the next two rounds
-				m_iGlock18ShotsFired++;
+				++m_iGlock18ShotsFired;
 				m_flGlock18Shoot = gpGlobals->time + 0.1f;
 			}
 		}
 
 		CRTP()->EFFC_RECOIL();
+
+		m_Scheduler.Enroll(Task_Shoot());
 	}
 
 	Task Task_Reload(seq_timing_t const* pReloadAnim) noexcept
@@ -1026,10 +1085,20 @@ struct G18C_VER2 : CBasePistol<G18C_VER2>
 				return 0.1f * (1.f - m_flAccuracy);
 		}
 	}
+	static inline auto EXPR_FIRING_SND() noexcept -> span<string const> {
+		static const std::array rgszSounds{ "weapons/glock18-2.wav"s };
+		return rgszSounds;
+	}
 	static inline constexpr void EFFC_RECOIL() noexcept {
 		//pWeapon->m_pPlayer->pev->punchangle.pitch -= 2;
 		// G18 in CS doesn't have any recoil at all.
 	};
+	inline void EFFC_SND_FIRING() const noexcept {
+		g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON,
+			UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(),
+			VOL_NORM, ATTN_NORM, SND_FL_NONE, 94 + UTIL_Random(0, 0xf)
+		);
+	}
 
 	static inline constexpr auto FLAG_IS_PISTOL = true;
 	static inline constexpr auto FLAG_CAN_HAVE_SHIELD = true;
@@ -1158,9 +1227,24 @@ struct USP2 : CBasePistol<USP2>
 				return 0.1f * (1.f - m_flAccuracy);
 		}
 	};
+	inline auto EXPR_FIRING_SND() const noexcept -> span<string const> {
+		static const auto rgszSounds{ CollectSounds("weapons/usp") };
+		static const auto rgszSoundsUnsil{ CollectSounds("weapons/usp_unsil-") };
+
+		if (m_iWeaponState & (WPNSTATE_USP_SILENCED | WPNSTATE_M4A1_SILENCED))
+			return rgszSounds;
+		else
+			return rgszSoundsUnsil;
+	}
 	inline void EFFC_RECOIL() const noexcept {
 		m_pPlayer->pev->punchangle.pitch -= 2;
 	};
+	inline void EFFC_SND_FIRING() const noexcept {
+		if (m_iWeaponState & (WPNSTATE_USP_SILENCED | WPNSTATE_M4A1_SILENCED))
+			g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON, UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(), VOL_NORM, ATTN_IDLE, SND_FL_NONE, 94 + UTIL_Random(0, 0xf));
+		else
+			g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON, UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(), VOL_NORM, ATTN_NORM, SND_FL_NONE, 87 + UTIL_Random(0, 0x12));
+	}
 
 	static inline constexpr auto FLAG_IS_PISTOL = true;
 	static inline constexpr auto FLAG_CAN_HAVE_SHIELD = true;
