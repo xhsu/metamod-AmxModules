@@ -1,18 +1,16 @@
-#ifdef __INTELLISENSE__
-#include <algorithm>
-#include <ranges>
-#endif
 
-#include <assert.h>
+#include <assert.h>	// #UPDATE_AT_CPP26 contract assert
 
 import std;
 import hlsdk;
 
+import UtlArray;
 import UtlRandom;
 import UtlString;
 
 import CBase;
 import FileSystem;
+import GameRules;
 import Message;
 import Models;
 import PlayerItem;
@@ -39,15 +37,19 @@ enum EWeaponTaskFlags2 : std::uint64_t
 	TASK_KEY_MONITOR_RMB = (1ull << 1),
 	TASK_KEY_MONITOR_R = (1ull << 2),
 
-	TASK_KEY_MONITORS = 0b1111'1111,
+	TASK_ALL_MONITORS = 0b1111'1111,
 
 	TASK_BEHAVIOR_DRAW = (1ull << 8),
 	TASK_BEHAVIOR_RELOAD = (1ull << 9),
-	TASK_BEHAVIOR_IDLE = (1ull << 10),
 	TASK_BEHAVIOR_SHOOT = (1ull << 11),
-	TASK_BEHAVIOR_HOLSTER = (1ull << 12),
+	TASK_BEHAVIOR_SPECIAL = (1ull << 12),
+	TASK_BEHAVIOR_HOLSTER = (1ull << 13),
 
-	TASK_BEHAVIORS = 0b1111'1111'0000'0000,
+	TASK_ALL_BEHAVIORS = TASK_ALL_MONITORS << 8,
+
+	TASK_ANIMATION = (1ull << 16),	// Always exclusive.
+
+	TASK_ALL_WEAKS = TASK_ALL_BEHAVIORS << 8,
 };
 
 extern Vector2D CS_FireBullets3(
@@ -55,9 +57,9 @@ extern Vector2D CS_FireBullets3(
 	float flSpread, float flDistance,
 	int iPenetration, int iBulletType, float flDamage, float flRangeModifier) noexcept;
 
-consteval float UTIL_WeaponTimeBase() { return 0.f; }
-
-auto GetAnimsFromKeywords(string_view szModel, span<string_view const> rgszKeywords, span<string_view const> rgszMustInc = {}, span<string_view const> rgszMustExc = {}) noexcept -> vector<seq_timing_t const*>
+[[nodiscard]] static auto GetAnimsFromKeywords(
+	string_view szModel, span<string_view const> rgszKeywords,
+	span<span<string_view const> const> rgrgszMustInc = {}, span<string_view const> rgszMustExc = {}) noexcept -> vector<seq_timing_t const*>
 {
 	// #UPDATE_AT_CPP26 transparant at
 	auto& ModelInfo = gStudioInfo.find(szModel)->second;
@@ -95,11 +97,25 @@ auto GetAnimsFromKeywords(string_view szModel, span<string_view const> rgszKeywo
 					return false;
 			}
 
-			// At least one of the prereq must be there.
-			// Or the list is empty.
-			for (auto&& szReq : rgszMustInc)
+			// At least one keyword from each row must be presented.
+			// ['word1' (OR) 'word2']
+			// (AND)
+			// ['word3']
+			for (auto&& rgszMustInc : rgrgszMustInc)
 			{
-				if (!std::ranges::contains_subrange(pr.first, szReq, fnCaselessCmp))
+				// At least one of the prereq must be there.
+				// Or the list is empty.
+				bContains = rgszMustInc.empty();
+				for (auto&& szReq : rgszMustInc)
+				{
+					if (std::ranges::contains_subrange(pr.first, szReq, fnCaselessCmp))
+					{
+						bContains = true;
+						break;
+					}
+				}
+
+				if (!bContains)
 					return false;
 			}
 
@@ -113,6 +129,91 @@ auto GetAnimsFromKeywords(string_view szModel, span<string_view const> rgszKeywo
 		| std::ranges::to<std::vector>();
 }
 
+template <typename CWeapon, typename AnimDat>
+struct CAnimationGroup final
+{
+	[[nodiscard]] static constexpr auto GetGenericExclusions() noexcept -> span<string_view const>
+	{
+		if constexpr (requires { AnimDat::EXCLUSION; })
+			return AnimDat::EXCLUSION;
+		else
+			return {};
+	}
+	[[nodiscard]] static constexpr auto GetGenericInclusions() noexcept -> span<string_view const>
+	{
+		if constexpr (requires { AnimDat::INCLUSION; })
+			return AnimDat::INCLUSION;
+		else
+			return {};
+	}
+	[[nodiscard]] static constexpr auto GetUnsilKeywords() noexcept -> span<string_view const>
+	{
+		if constexpr (requires { AnimDat::KEYWORD_UNSIL; })
+			return AnimDat::KEYWORD_UNSIL;
+		else
+			return {};
+	}
+	[[nodiscard]] static constexpr auto GetShieldKeywords() noexcept -> span<string_view const>
+	{
+		if constexpr (requires { AnimDat::KEYWORD_SHIELD; })
+			return AnimDat::KEYWORD_SHIELD;
+		else
+			return {};
+	}
+
+#ifdef _DEBUG
+	static inline vector<seq_timing_t const*> const* m_pRegulars{};
+	static inline vector<seq_timing_t const*> const* m_pUnsil{};
+	static inline vector<seq_timing_t const*> const* m_pShield{};
+#endif
+
+	static auto operator()(CBasePlayerWeapon* pWeapon) noexcept -> seq_timing_t const*
+	{
+		static auto const REGULAR{
+			GetAnimsFromKeywords(CWeapon::MODEL_V, AnimDat::KEYWORD, std::array{ GetGenericInclusions(), }, GetGenericExclusions())
+		};
+		assert(!REGULAR.empty()); m_pRegulars = &REGULAR;
+		auto pResult{ UTIL_GetRandomOne(REGULAR) };
+
+		// Unsil
+		if constexpr (requires { CWeapon::FLAG_SECATK_SILENCER; })
+		{
+			static const auto UNSIL_INC = vector{ GetGenericInclusions(), GetUnsilKeywords(), };
+			static const auto UNSIL_EXC = UTIL_ArraySetDiff(GetGenericExclusions(), GetUnsilKeywords());
+			static auto const ANIM_UNSIL{
+				GetAnimsFromKeywords(CWeapon::MODEL_V, AnimDat::KEYWORD, UNSIL_INC, UNSIL_EXC)
+			};
+			assert(!ANIM_UNSIL.empty()); m_pUnsil = &ANIM_UNSIL;
+
+			if (!(pWeapon->m_iWeaponState & WPNSTATE_USP_SILENCED))
+				pResult = UTIL_GetRandomOne(ANIM_UNSIL);
+		}
+		// Shield, will override unsil.
+		if constexpr (requires { CWeapon::FLAG_CAN_HAVE_SHIELD; })
+		{
+			static const auto SHIELD_INC = vector{ GetGenericInclusions(), GetShieldKeywords(), };
+			static const auto SHIELD_EXC = UTIL_ArraySetDiff(GetGenericExclusions(), GetShieldKeywords());
+			static auto const ANIM_SHIELD{
+				GetAnimsFromKeywords(CWeapon::MODEL_V_SHIELD, AnimDat::KEYWORD, SHIELD_INC, SHIELD_EXC)
+			};
+			assert(!ANIM_SHIELD.empty()); m_pShield = &ANIM_SHIELD;
+
+			if (pWeapon->m_pPlayer->HasShield())
+				pResult = UTIL_GetRandomOne(ANIM_SHIELD);
+		}
+
+		// Overwrite Inspector
+		if constexpr (requires { { std::invoke(AnimDat::Inspector, pWeapon, &pResult) } -> std::convertible_to<bool>; })
+		{
+			// Using std::invoke to support class member function pointer
+			std::invoke(AnimDat::Inspector, pWeapon, &pResult);
+		}
+
+		assert(pResult != nullptr);
+		return pResult;
+	}
+};
+
 template <typename T>
 struct CBasePistol : CPrefabWeapon
 {
@@ -120,9 +221,8 @@ struct CBasePistol : CPrefabWeapon
 
 	qboolean UseDecrement() noexcept override { return true; }
 	int iItemSlot() noexcept override { return T::DAT_SLOT + 1; }
-	float GetMaxSpeed() noexcept override { return T::DAT_MAX_SPEED; }
-	//void Think() noexcept final {}
-	//void ItemPostFrame() noexcept final { m_Scheduler.Think(); }
+	void Think() noexcept final {}
+	void ItemPostFrame() noexcept final { m_Scheduler.Think(); }
 
 	void Spawn() noexcept override
 	{
@@ -199,6 +299,229 @@ struct CBasePistol : CPrefabWeapon
 		}
 	}
 
+	Task Task_Deploy(seq_timing_t const* pAnim) noexcept
+	{
+		if (!CanDeploy())
+			co_return;
+
+		m_pPlayer->TabulateAmmo();
+
+		m_pPlayer->pev->viewmodel = MAKE_STRING(T::MODEL_V);
+		m_pPlayer->pev->weaponmodel = MAKE_STRING(T::MODEL_P);
+
+		model_name = m_pPlayer->pev->viewmodel;
+		strcpy(m_pPlayer->m_szAnimExtention, T::ANIM_3RD_PERSON);
+		m_Scheduler.Enroll(Task_WeaponAnim(pAnim), TASK_ANIMATION, true);
+
+		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
+		{
+			if (m_pPlayer->HasShield())
+			{
+				m_pPlayer->pev->viewmodel = MAKE_STRING(T::MODEL_V_SHIELD);
+				m_pPlayer->pev->weaponmodel = MAKE_STRING(T::MODEL_P_SHIELD);
+
+				strcpy(m_pPlayer->m_szAnimExtention, "shieldgun");
+			}
+		}
+
+		m_pPlayer->m_flNextAttack = pAnim->m_total_length;
+		m_flTimeWeaponIdle = pAnim->m_total_length;
+		m_flLastFireTime = 0.0f;
+		m_flDecreaseShotsFired = gpGlobals->time;
+
+		m_pPlayer->m_iFOV = DEFAULT_FOV;
+		m_pPlayer->pev->fov = DEFAULT_FOV;
+		m_pPlayer->m_iLastZoom = DEFAULT_FOV;
+		m_pPlayer->m_bResumeZoom = false;
+
+		co_await m_pPlayer->m_flNextAttack;
+
+		// Start ItemPostFrame and Idle here.
+		m_Scheduler.Enroll(Task_ItemPostFrame(), TASK_ALL_MONITORS, true);
+	}
+
+	Task Task_ResumeZoom(float const AWAIT) const noexcept
+	{
+		m_pPlayer->m_bResumeZoom = true;
+
+		co_await AWAIT;
+
+		if (m_pPlayer->m_bResumeZoom)
+		{
+			m_pPlayer->m_iFOV = m_pPlayer->m_iLastZoom;
+			m_pPlayer->pev->fov = (float)m_pPlayer->m_iFOV;
+
+			if (m_pPlayer->m_iFOV == m_pPlayer->m_iLastZoom)
+			{
+				// return the fade level in zoom.
+				m_pPlayer->m_bResumeZoom = false;
+			}
+		}
+	}
+
+	Task Task_EjectBrassLate(float const AWAIT) noexcept
+	{
+		m_pPlayer->m_flEjectBrass = AWAIT;
+
+		co_await AWAIT;
+
+		if (m_pPlayer->m_flEjectBrass != 0 && m_pPlayer->m_flEjectBrass <= gpGlobals->time)
+		{
+			m_pPlayer->m_flEjectBrass = 0;
+			EjectBrassLate();
+		}
+	}
+
+	Task Task_ItemPostFrame() noexcept
+	{
+		for (;; co_await TaskScheduler::NextFrame::Rank[0])
+		{
+			if (!(m_pPlayer->pev->button & IN_ATTACK))
+			{
+				m_flLastFireTime = 0;
+			}
+
+			// Allowing player to shield up during reload.
+			if (m_pPlayer->HasShield())
+			{
+				if (m_fInReload && (m_pPlayer->pev->button & IN_ATTACK2))
+				{
+					SecondaryAttack();
+					m_pPlayer->pev->button &= ~IN_ATTACK2;
+
+					m_fInReload = false;
+					m_Scheduler.Delist(TASK_BEHAVIOR_RELOAD);
+
+					m_pPlayer->m_flNextAttack = 0;
+				}
+			}
+
+			if (HasSecondaryAttack() && (m_pPlayer->pev->button & IN_ATTACK2)
+				&& !m_Scheduler.Exist(TASK_ALL_BEHAVIORS)
+				&& !m_pPlayer->m_bIsDefusing // In-line: I think it's fine to block secondary attack, when defusing. It's better then blocking speed resets in weapons.
+				)
+			{
+				SecondaryAttack();
+				m_pPlayer->pev->button &= ~IN_ATTACK2;
+			}
+			else if ((m_pPlayer->pev->button & IN_ATTACK)
+				&& !m_Scheduler.Exist(TASK_ALL_BEHAVIORS))
+			{
+				if ((m_iClip == 0 && T::DAT_AMMO_NAME != nullptr)
+					|| (T::DAT_MAX_CLIP == WEAPON_NOCLIP && !m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType]))
+				{
+					m_fFireOnEmpty = true;
+				}
+
+				m_pPlayer->TabulateAmmo();
+
+				// Can't shoot during the freeze period
+				// Always allow firing in single player
+				if ((m_pPlayer->m_bCanShoot && g_pGameRules->IsMultiplayer() && !g_pGameRules->IsFreezePeriod() && !m_pPlayer->m_bIsDefusing)
+					|| !g_pGameRules->IsMultiplayer())
+				{
+					// don't fire underwater
+					if (m_pPlayer->pev->waterlevel == 3 && (T::DAT_ITEM_FLAGS & ITEM_FLAG_NOFIREUNDERWATER))
+					{
+						PlayEmptySound();
+
+						m_flNextPrimaryAttack = 0.15f;
+						m_Scheduler.Enroll(
+							[]() static noexcept -> Task { co_await 0.15f; }(),
+							TASK_BEHAVIOR_SHOOT,
+							true
+						);
+					}
+					else
+					{
+						PrimaryAttack();
+					}
+				}
+			}
+			else if ((m_pPlayer->pev->button & IN_RELOAD) && T::DAT_MAX_CLIP != WEAPON_NOCLIP
+				&& !m_fInReload && !m_Scheduler.Exist(TASK_ALL_BEHAVIORS))
+			{
+				// reload when reload is pressed, or if no buttons are down and weapon is empty.
+				if (m_flFamasShoot == 0 && m_flGlock18Shoot == 0)
+				{
+					if (!(m_iWeaponState & WPNSTATE_SHIELD_DRAWN))
+					{
+						// reload when reload is pressed, or if no buttons are down and weapon is empty.
+						Reload();
+					}
+				}
+			}
+
+			// Idle
+			else if (!(m_pPlayer->pev->button & (IN_ATTACK | IN_ATTACK2)))
+			{
+				// no fire buttons down
+
+				// The following code prevents the player from tapping the firebutton repeatedly
+				// to simulate full auto and retaining the single shot accuracy of single fire
+				if (m_bDelayFire)
+				{
+					m_bDelayFire = false;
+
+					if (m_iShotsFired > 15)
+						m_iShotsFired = 15;
+
+					m_flDecreaseShotsFired = gpGlobals->time + 0.4f;
+				}
+
+				m_fFireOnEmpty = false;
+
+				// if it's a pistol then set the shots fired to 0 after the player releases a button
+				if constexpr (requires { T::FLAG_IS_PISTOL; })
+				{
+					m_iShotsFired = 0;
+				}
+				else
+				{
+					if (m_iShotsFired > 0 && m_flDecreaseShotsFired < gpGlobals->time)
+					{
+						m_flDecreaseShotsFired = gpGlobals->time + 0.0225f;
+						--m_iShotsFired;
+
+						// Reset accuracy
+						if (m_iShotsFired == 0)
+							m_flAccuracy = T::DAT_ACCY_INIT;
+					}
+				}
+
+				if (!IsUseable() && !m_Scheduler.Exist(TASK_ALL_BEHAVIORS))
+				{
+#if 0
+					// weapon isn't useable, switch.
+					if (!(T::DAT_ITEM_FLAGS & ITEM_FLAG_NOAUTOSWITCHEMPTY) && g_pGameRules->GetNextBestWeapon(m_pPlayer, this))
+					{
+						m_flNextPrimaryAttack = UTIL_WeaponTimeBase() + 0.3f;
+						continue;
+					}
+#endif
+				}
+				else
+				{
+					if (!(m_iWeaponState & WPNSTATE_SHIELD_DRAWN))
+					{
+						// weapon is useable. Reload if empty and weapon has waited as long as it has to after firing
+						if (!m_iClip && !(T::DAT_ITEM_FLAGS & ITEM_FLAG_NOAUTORELOAD) && !m_Scheduler.Exist(TASK_ALL_BEHAVIORS | TASK_ANIMATION))
+						{
+							if (m_flFamasShoot == 0 && m_flGlock18Shoot == 0)
+							{
+								Reload();
+								continue;
+							}
+						}
+					}
+				}
+
+				if (!m_Scheduler.Exist(TASK_ANIMATION))
+					WeaponIdle();
+			}
+		}
+	}
+
 	qboolean Deploy() noexcept override
 	{
 		if constexpr (requires { T::m_bBurstFire; })
@@ -223,63 +546,14 @@ struct CBasePistol : CPrefabWeapon
 				m_iWeaponState |= WPNSTATE_ELITE_LEFT;
 		}
 
-		// See if shielded first
-		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
-		{
-			static auto const ANIM_SHIELD_DRAW{
-				GetAnimsFromKeywords(T::MODEL_V_SHIELD, T::ANIM_KW_DRAW)
-			};
+		static constexpr CAnimationGroup<T, typename T::AnimDat_Draw> AnimSelector{};
 
-			assert(!ANIM_SHIELD_DRAW.empty());
-
-			if (m_pPlayer->HasShield())
-			{
-				m_iWeaponState &= ~WPNSTATE_GLOCK18_BURST_MODE;
-				m_iWeaponState &= ~WPNSTATE_USP_SILENCED;
-
-				return DefaultDeploy(
-					T::MODEL_V_SHIELD,
-					T::MODEL_P_SHIELD,
-					UTIL_GetRandomOne(ANIM_SHIELD_DRAW)->m_iSeqIdx,
-					"shieldgun",
-					UseDecrement() != false
-				);
-			}
-		}
-
-		// USP, unsilenced
-		if constexpr (requires { T::FLAG_SECATK_SILENCER; })
-		{
-			static auto const ANIM_UNSIL_DRAW{
-				GetAnimsFromKeywords(T::MODEL_V, T::ANIM_KW_DRAW, T::ANIM_KWEXC)
-			};
-			assert(!ANIM_UNSIL_DRAW.empty());
-
-			if (!(m_iWeaponState & WPNSTATE_USP_SILENCED))
-			{
-				return DefaultDeploy(
-					T::MODEL_V,
-					T::MODEL_P,
-					UTIL_GetRandomOne(ANIM_UNSIL_DRAW)->m_iSeqIdx,
-					T::ANIM_3RD_PERSON,
-					UseDecrement() != false
-				);
-			}
-		}
-
-		// Regular deploy. (and silenced status on USP)
-		static auto const ANIM_DRAW{
-			GetAnimsFromKeywords(T::MODEL_V, T::ANIM_KW_DRAW, {}, T::ANIM_KWEXC)
-		};
-		assert(!ANIM_DRAW.empty());
-
-		return DefaultDeploy(
-			T::MODEL_V,
-			T::MODEL_P,
-			UTIL_GetRandomOne(ANIM_DRAW)->m_iSeqIdx,
-			T::ANIM_3RD_PERSON,
-			UseDecrement() != false
+		m_Scheduler.Enroll(
+			Task_Deploy(AnimSelector(this)),
+			TASK_BEHAVIOR_DRAW | TASK_ANIMATION,
+			true
 		);
+		return true;
 	}
 
 	using CPrefabWeapon::SendWeaponAnim;	// Import the original one as well.
@@ -305,7 +579,7 @@ struct CBasePistol : CPrefabWeapon
 			if (bSkipLocal && g_engfuncs.pfnCanSkipPlayer(m_pPlayer->edict()))
 				return std::addressof(AnimInfo);
 
-			gmsgWeaponAnim::Send(m_pPlayer->edict(), AnimInfo.m_iSeqIdx, 0);
+			gmsgWeaponAnim::Send(m_pPlayer->edict(), AnimInfo.m_iSeqIdx, iBody);
 			return std::addressof(AnimInfo);
 		}
 		catch (...)
@@ -316,86 +590,105 @@ struct CBasePistol : CPrefabWeapon
 		std::unreachable();
 	}
 
-	// Addition
-	bool ShieldSecondaryFire() noexcept
+	Task Task_WeaponAnim(string_view anim, int iBody = 0, bool bSkipLocal = false) const noexcept
 	{
-		if (!m_pPlayer->HasShield())
-			return false;
-
-		seq_timing_t const* pAnimInfo{};
-
-		if (m_iWeaponState & WPNSTATE_SHIELD_DRAWN)
+		if (auto pAnim = SendWeaponAnim(anim, iBody, bSkipLocal))
 		{
-			m_iWeaponState &= ~WPNSTATE_SHIELD_DRAWN;
-			pAnimInfo = SendWeaponAnim("shield_down", UseDecrement() != false);
-			strcpy(m_pPlayer->m_szAnimExtention, "shieldgun");
-			m_fMaxSpeed = T::DAT_MAX_SPEED;
-			m_pPlayer->m_bShieldDrawn = false;
-		}
-		else
-		{
-			m_iWeaponState |= WPNSTATE_SHIELD_DRAWN;
-			pAnimInfo = SendWeaponAnim("shield_up", UseDecrement() != false);
-			strcpy(m_pPlayer->m_szAnimExtention, "shielded");
-			m_fMaxSpeed = T::DAT_SHIELDED_SPEED;
-			m_pPlayer->m_bShieldDrawn = true;
+			// It's absolutely none of our business that whether can we attack or so.
+			// That's something should be decided in other tasks.
+			co_await pAnim->m_total_length;
 		}
 
-		m_pPlayer->UpdateShieldCrosshair((m_iWeaponState & WPNSTATE_SHIELD_DRAWN) != WPNSTATE_SHIELD_DRAWN);
-		m_pPlayer->ResetMaxSpeed();
+		co_return;
+	}
 
-		assert(pAnimInfo != nullptr);
+	Task Task_WeaponAnim(seq_timing_t const* pAnim, int iBody = 0) const noexcept
+	{
+		if (pAnim)
+		{
+			m_pPlayer->pev->weaponanim = pAnim->m_iSeqIdx;
+			gmsgWeaponAnim::Send(m_pPlayer->edict(), pAnim->m_iSeqIdx, iBody);
 
-		m_flNextSecondaryAttack = pAnimInfo->m_total_length;
-		m_flNextPrimaryAttack = pAnimInfo->m_total_length;
-		m_flTimeWeaponIdle = pAnimInfo->m_total_length + 0.1f;
+			co_await pAnim->m_total_length;
+		}
 
-		return true;
+		co_return;
 	}
 
 	void SecondaryAttack() noexcept override
 	{
 		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
 		{
-			if (ShieldSecondaryFire())
+			if (m_pPlayer->HasShield())
+			{
+				if (m_iWeaponState & WPNSTATE_SHIELD_DRAWN)
+				{
+					m_iWeaponState &= ~WPNSTATE_SHIELD_DRAWN;
+					m_Scheduler.Enroll(Task_WeaponAnim("shield_down"), TASK_BEHAVIOR_SPECIAL | TASK_ANIMATION, true);
+					strcpy(m_pPlayer->m_szAnimExtention, "shieldgun");
+					m_fMaxSpeed = T::DAT_MAX_SPEED;
+					m_pPlayer->m_bShieldDrawn = false;
+				}
+				else
+				{
+					m_iWeaponState |= WPNSTATE_SHIELD_DRAWN;
+					m_Scheduler.Enroll(Task_WeaponAnim("shield_up"), TASK_BEHAVIOR_SPECIAL | TASK_ANIMATION, true);
+					strcpy(m_pPlayer->m_szAnimExtention, "shielded");
+					m_fMaxSpeed = T::DAT_SHIELDED_SPEED;
+					m_pPlayer->m_bShieldDrawn = true;
+				}
+
+				m_pPlayer->UpdateShieldCrosshair((m_iWeaponState & WPNSTATE_SHIELD_DRAWN) != WPNSTATE_SHIELD_DRAWN);
+				m_pPlayer->ResetMaxSpeed();
+
+				// Ignore all other abilities.
 				return;
+			}
 		}
 
 		if constexpr (requires { T::m_bBurstFire; })
 		{
-			if (m_iWeaponState & WPNSTATE_GLOCK18_BURST_MODE)
-			{
-				gmsgTextMsg::Send(m_pPlayer->edict(), HUD_PRINTCENTER, "#Switch_To_SemiAuto");
-				m_iWeaponState &= ~WPNSTATE_GLOCK18_BURST_MODE;
-			}
-			else
-			{
-				gmsgTextMsg::Send(m_pPlayer->edict(), HUD_PRINTCENTER, "#Switch_To_BurstFire");
-				m_iWeaponState |= WPNSTATE_GLOCK18_BURST_MODE;
-			}
+			m_Scheduler.Enroll(
+				[](CBasePistol* self) static noexcept -> Task
+				{
+					if (self->m_iWeaponState & WPNSTATE_GLOCK18_BURST_MODE)
+					{
+						gmsgTextMsg::Send(self->m_pPlayer->edict(), HUD_PRINTCENTER, "#Switch_To_SemiAuto");
+						self->m_iWeaponState &= ~WPNSTATE_GLOCK18_BURST_MODE;
+					}
+					else
+					{
+						gmsgTextMsg::Send(self->m_pPlayer->edict(), HUD_PRINTCENTER, "#Switch_To_BurstFire");
+						self->m_iWeaponState |= WPNSTATE_GLOCK18_BURST_MODE;
+					}
 
-			m_flNextSecondaryAttack = 0.3f;
+					// Prevent quick clicking
+					co_await 0.3f;
+
+				}(this),
+				TASK_BEHAVIOR_SPECIAL,
+				true
+			);
 		}
 		else if constexpr (requires { T::FLAG_SECATK_SILENCER; })
 		{
-			seq_timing_t const* pAnimInfo{};
+			m_Scheduler.Enroll(
+				[](CBasePistol* self) static noexcept -> Task
+				{
+					auto const pSilencerAnim = self->SendWeaponAnim(
+						(self->m_iWeaponState & WPNSTATE_USP_SILENCED) ? "detach_silencer" : "add_silencer"
+					);
+					assert(pSilencerAnim != nullptr);
 
-			if (m_iWeaponState & WPNSTATE_USP_SILENCED)
-			{
-				m_iWeaponState &= ~WPNSTATE_USP_SILENCED;
-				pAnimInfo = SendWeaponAnim("detach_silencer", UseDecrement() != false);
-			}
-			else
-			{
-				m_iWeaponState |= WPNSTATE_USP_SILENCED;
-				pAnimInfo = SendWeaponAnim("add_silencer", UseDecrement() != false);
-			}
+					co_await pSilencerAnim->m_total_length;
 
-			assert(pAnimInfo != nullptr);
+					// Invert the flag.
+					self->m_iWeaponState ^= WPNSTATE_USP_SILENCED;
 
-			m_flNextPrimaryAttack
-				= m_flNextSecondaryAttack
-				= m_flTimeWeaponIdle = pAnimInfo->m_total_length;
+				}(this),
+				TASK_BEHAVIOR_SPECIAL | TASK_ANIMATION,
+				true
+			);
 		}
 	}
 
@@ -439,6 +732,7 @@ struct CBasePistol : CPrefabWeapon
 			{
 				PlayEmptySound();
 				m_flNextPrimaryAttack = 0.2f;
+				m_Scheduler.Enroll([]() static noexcept -> Task { co_await 0.2f; }(), TASK_BEHAVIOR_SHOOT, true);
 			}
 
 			if (ZBot::Manager())
@@ -475,54 +769,46 @@ struct CBasePistol : CPrefabWeapon
 		auto const [vecFwd, vecRight, vecUp]
 			= (m_pPlayer->pev->v_angle + m_pPlayer->pev->punchangle).AngleVectors();
 
-		//auto const vecDir = m_pPlayer->FireBullets3(
-		//	m_pPlayer->GetGunPosition(),
-		//	vecFwd,
-		//	CRTP()->EXPR_SPREAD(),
-		//	T::DAT_EFF_SHOT_DIST,
-		//	T::DAT_PENETRATION,
-		//	T::DAT_BULLET_TYPE,
-		//	std::lroundf(CRTP()->EXPR_DAMAGE()),
-		//	T::DAT_RANGE_MODIFIER,
-		//	m_pPlayer->pev,
-		//	requires { T::FLAG_IS_PISTOL; },
-		//	m_pPlayer->random_seed
-		//);
+		[[maybe_unused]]
 		auto const vecDir = CS_FireBullets3(
 			m_pPlayer, this,
 			CRTP()->EXPR_SPREAD(), T::DAT_EFF_SHOT_DIST, T::DAT_PENETRATION,
 			T::DAT_BULLET_TYPE, CRTP()->EXPR_DAMAGE(), T::DAT_RANGE_MODIFIER
 		);
 
-		//static Vector vecDummy{};
-		//g_engfuncs.pfnPlaybackEvent(
-		//	FEV_NOTHOST,
-		//	m_pPlayer->edict(),
-		//	m_usFireEv,
-		//	0,
-		//	vecDummy, vecDummy,
-		//	vecDir.x, vecDir.y,
-		//	std::lroundf(m_pPlayer->pev->punchangle.pitch * 100.f), std::lroundf(m_pPlayer->pev->punchangle.yaw * 100.f),
-		//	m_iClip == 0, m_iWeaponState & WPNSTATE_USP_SILENCED
-		//);
-
 		// LUNA:
 		// PBE can be consider as the composition of the following:
 		// I. First personal effect
-			// Muzzle flash & DLight - MSG
-			// Gun animation - MSG
-			// Shell ejection - MSG
-			// Smoking gun - ENT
-			// Sound - ev_hldm.cpp
+			// [ ] Muzzle flash & DLight - MSG
+			// [ ] Gun animation - MSG
+			// [ ] Shell ejection - MSG
+			// [ ] Smoking gun - ENT
+			// [ ] Sound - ev_hldm.cpp
 		// II. Traceline - Make our own FireBullets function?
-			// Trace effect - MSG
-			// Bullet hole - MSG
-			// Debris - MSG
-			// Smoke by tex color - ENT
-			// Sound of bullet hit - emit from Smoke ENT
+			// [ ] Trace effect - MSG
+			// [X] Bullet hole - MSG
+			// [ ] Debris - MSG
+			// [ ] Smoke by tex color - ENT
+			// [ ] Sound of bullet hit - emit from Smoke ENT
 
 		m_flNextPrimaryAttack = m_flNextSecondaryAttack = T::DAT_FIRE_INTERVAL;
-		m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + 2.0f;	// Change it to anim time of shooting anim.
+		m_Scheduler.Enroll([]() static noexcept -> Task { co_await T::DAT_FIRE_INTERVAL; }(), TASK_BEHAVIOR_SHOOT, true);
+
+		static constexpr CAnimationGroup<T, typename T::AnimDat_Shoot> ShootAnimSelector{};
+		auto pShootingAnim = ShootAnimSelector(this);
+
+		if constexpr (requires { typename T::AnimDat_ShootLast; })
+		{
+			if (m_iClip == 0)
+			{
+				static constexpr CAnimationGroup<T, typename T::AnimDat_ShootLast> ShootLastAnimSelector{};
+				pShootingAnim = ShootLastAnimSelector(this);
+			}
+		}
+
+		m_flTimeWeaponIdle = pShootingAnim->m_total_length;	// Change it to anim time of shooting anim.
+		m_Scheduler.Enroll([flTime = pShootingAnim->m_total_length]() noexcept -> Task { co_await flTime; }(), TASK_ANIMATION, true);
+		m_Scheduler.Enroll(Task_WeaponAnim(pShootingAnim), TASK_ANIMATION, true);
 
 		/*
 		if (!m_iClip && m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType] <= 0)
@@ -545,51 +831,47 @@ struct CBasePistol : CPrefabWeapon
 		CRTP()->EFFC_RECOIL();
 	}
 
+	Task Task_Reload(seq_timing_t const* pReloadAnim) noexcept
+	{
+		if (m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType] <= 0)
+			co_return;
+
+		auto const j = std::min(T::DAT_MAX_CLIP - m_iClip, m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType]);
+		if (!j)
+			co_return;
+
+		m_pPlayer->m_flNextAttack = pReloadAnim->m_fz_end;
+
+		ReloadSound();
+		SendWeaponAnim(pReloadAnim->m_iSeqIdx);
+
+		m_fInReload = true;
+		m_flTimeWeaponIdle = pReloadAnim->m_total_length;
+
+		// complete the reload.
+		co_await pReloadAnim->m_fz_end;
+
+		// Add them to the clip
+		m_iClip += j;
+		m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType] -= j;
+
+		m_pPlayer->TabulateAmmo();
+		m_fInReload = false;
+
+		// Block the idle anim.
+		co_await std::max(0.f, pReloadAnim->m_total_length - pReloadAnim->m_fz_end);
+	}
+
 	void Reload() noexcept override
 	{
 		if (m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType] <= 0)
 			return;
 
-		seq_timing_t const* pAnimInfo{ nullptr };
+		static constexpr CAnimationGroup<T, typename T::AnimDat_Reload> AnimSelector{};
+		auto const pAnimInfo = AnimSelector(this);
 
-		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
-		{
-			static auto const ANIM_SHIELD_RELOAD{
-				GetAnimsFromKeywords(T::MODEL_V_SHIELD, T::ANIM_KW_RELOAD)
-			};
-
-			if (pAnimInfo == nullptr && m_pPlayer->HasShield())
-			{
-				assert(!ANIM_SHIELD_RELOAD.empty());
-				pAnimInfo = UTIL_GetRandomOne(ANIM_SHIELD_RELOAD);
-			}
-		}
-
-		// USP, unsil mode
-		if constexpr (requires { T::FLAG_SECATK_SILENCER; })
-		{
-			static auto const ANIM_UNSIL_RELOAD{
-				GetAnimsFromKeywords(T::MODEL_V, T::ANIM_KW_RELOAD, T::ANIM_KWEXC)
-			};
-
-			if (pAnimInfo == nullptr && !(m_iWeaponState & WPNSTATE_USP_SILENCED))
-			{
-				assert(!ANIM_UNSIL_RELOAD.empty());
-				pAnimInfo = UTIL_GetRandomOne(ANIM_UNSIL_RELOAD);
-			}
-		}
-
-		if (pAnimInfo == nullptr)
-		{
-			static auto const ANIM_RELOAD{
-				GetAnimsFromKeywords(T::MODEL_V, T::ANIM_KW_RELOAD, {}, T::ANIM_KWEXC)
-			};
-
-			assert(!ANIM_RELOAD.empty());
-			pAnimInfo = UTIL_GetRandomOne(ANIM_RELOAD);
-		}
-
-		if (DefaultReload(T::DAT_MAX_CLIP, pAnimInfo->m_iSeqIdx, pAnimInfo->m_total_length))
+		m_Scheduler.Enroll(Task_Reload(pAnimInfo), TASK_BEHAVIOR_RELOAD | TASK_ANIMATION, true);
+		if (m_Scheduler.Exist(TASK_BEHAVIOR_RELOAD))	// If no reload is happening, it wont pass the test here.
 		{
 			m_pPlayer->SetAnimation(PLAYER_RELOAD);
 			m_flAccuracy = T::DAT_ACCY_INIT;
@@ -601,61 +883,41 @@ struct CBasePistol : CPrefabWeapon
 		//ResetEmptySound();	// LUNA: useless call.
 		m_pPlayer->GetAutoaimVector(AUTOAIM_10DEGREES);
 
-		if (m_flTimeWeaponIdle > 0)
+		if (m_flTimeWeaponIdle > 0 || m_Scheduler.Exist(TASK_ANIMATION))
 			return;
 
 		// Dont sent idle anim to make the slide back - the last frame of shoot_last!
 		if (m_iClip <= 0)
 			return;
 
-		seq_timing_t const* pAnimInfo{ nullptr };
+		static constexpr CAnimationGroup<T, typename T::AnimDat_Idle> AnimSelector{};
+		auto pAnimInfo = AnimSelector(this);
 
-		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
+		if constexpr (requires { typename T::AnimDat_ShieldedIdle; })
 		{
-			static constexpr std::array SHIELD_KWEXC{ "shield"sv };
-			static auto const ANIM_SHIELD_IDLE{
-				GetAnimsFromKeywords(T::MODEL_V_SHIELD, T::ANIM_KW_IDLE, {}, SHIELD_KWEXC)	// Shield_Idle must be excluded.
-			};
-
-			if (pAnimInfo == nullptr && m_pPlayer->HasShield())
-			{
-				assert(!ANIM_SHIELD_IDLE.empty());
-
-				if (m_iWeaponState & WPNSTATE_SHIELD_DRAWN)
-					pAnimInfo = std::addressof(gStudioInfo.find(T::MODEL_V_SHIELD)->second.find("shield_idle")->second);
-				else
-					pAnimInfo = UTIL_GetRandomOne(ANIM_SHIELD_IDLE);
-			}
+			static constexpr CAnimationGroup<T, typename T::AnimDat_ShieldedIdle> ShieldedAnimSelector{};
+			if (m_iWeaponState & WPNSTATE_SHIELD_DRAWN)
+				pAnimInfo = ShieldedAnimSelector(this);
 		}
 
-		// USP, unsil mode
-		if constexpr (requires { T::FLAG_SECATK_SILENCER; })
-		{
-			static auto const ANIM_UNSIL_IDLE{
-				GetAnimsFromKeywords(T::MODEL_V, T::ANIM_KW_IDLE, T::ANIM_KWEXC)
-			};
-
-			if (pAnimInfo == nullptr && !(m_iWeaponState & WPNSTATE_USP_SILENCED))
-			{
-				assert(!ANIM_UNSIL_IDLE.empty());
-				pAnimInfo = UTIL_GetRandomOne(ANIM_UNSIL_IDLE);
-			}
-		}
-
-		if (pAnimInfo == nullptr)
-		{
-			static auto const ANIM_IDLE{
-				GetAnimsFromKeywords(T::MODEL_V, T::ANIM_KW_IDLE, {}, T::ANIM_KWEXC)
-			};
-
-			assert(!ANIM_IDLE.empty());
-			pAnimInfo = UTIL_GetRandomOne(ANIM_IDLE);
-		}
-
-		assert(pAnimInfo != nullptr);
-
-		SendWeaponAnim(pAnimInfo->m_iSeqIdx, false);
 		m_flTimeWeaponIdle = std::max(5.f, pAnimInfo->m_total_length);
+		m_Scheduler.Enroll(
+			[](seq_timing_t const* pAnimInfo, CBasePlayer* pPlayer, int iBody = 0) static noexcept -> Task
+			{
+				pPlayer->pev->weaponanim = pAnimInfo->m_iSeqIdx;
+				gmsgWeaponAnim::Send(pPlayer->edict(), pAnimInfo->m_iSeqIdx, iBody);
+
+				co_await std::max(5.f, pAnimInfo->m_total_length);
+			}(pAnimInfo, m_pPlayer),
+			TASK_ANIMATION,
+			true
+		);
+	}
+
+	void Holster(int skiplocal = 0) noexcept override
+	{
+		__super::Holster(skiplocal);
+		m_Scheduler.Clear();
 	}
 
 private:
@@ -675,12 +937,29 @@ struct G18C_VER2 : CBasePistol<G18C_VER2>
 	static inline constexpr char MODEL_SHELL[] = "models/pshell.mdl";
 
 	static inline constexpr char ANIM_3RD_PERSON[] = "onehanded";
-	static inline constexpr std::array ANIM_KW_IDLE{ "idle"sv, };
-	static inline constexpr std::array ANIM_KW_SHOOT{ "shoot"sv, "fire"sv, };
-	static inline constexpr std::array ANIM_KW_RELOAD{ "reload"sv, };
-	static inline constexpr std::array ANIM_KW_DRAW{ "draw"sv, "deploy"sv, };
-	static inline constexpr std::array ANIM_KWEXC{ "unsil"sv };	// Served as 'unsilenced' identifier on USP.
-	//static inline constexpr std::array ANIM_KWINC{""};
+
+	struct AnimDat_Idle final {
+		static inline constexpr std::array KEYWORD{ "idle"sv, };
+		static inline constexpr auto EXCLUSION = std::array{ "shield"sv, };
+	};
+	struct AnimDat_ShieldedIdle final {
+		static inline constexpr std::array KEYWORD{ "idle"sv, };
+		static inline constexpr std::array KEYWORD_SHIELD{ "shield"sv, };
+	};
+	struct AnimDat_Shoot final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr auto EXCLUSION = std::array{ "last"sv, "empty"sv, };
+	};
+	struct AnimDat_ShootLast final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr auto INCLUSION = std::array{ "last"sv, "empty"sv, };
+	};
+	struct AnimDat_Draw final {
+		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, };
+	};
+	struct AnimDat_Reload final {
+		static inline constexpr std::array KEYWORD{ "reload"sv, };
+	};
 
 	static inline constexpr std::array SOUND_ALL
 	{
@@ -774,12 +1053,45 @@ struct USP2 : CBasePistol<USP2>
 	static inline constexpr char MODEL_SHELL[] = "models/pshell.mdl";
 
 	static inline constexpr char ANIM_3RD_PERSON[] = "onehanded";
-	static inline constexpr std::array ANIM_KW_IDLE{ "idle"sv, };
-	static inline constexpr std::array ANIM_KW_SHOOT{ "shoot"sv, "fire"sv, };
-	static inline constexpr std::array ANIM_KW_RELOAD{ "reload"sv, };
-	static inline constexpr std::array ANIM_KW_DRAW{ "draw"sv, "deploy"sv, };
-	static inline constexpr std::array ANIM_KWEXC{ "unsil"sv };	// Served as 'unsilenced' identifier on USP.
-	//static inline constexpr std::array ANIM_KWINC{""};
+
+	struct AnimDat_Idle final
+	{
+		static inline constexpr std::array KEYWORD{ "idle"sv, };
+		//static inline constexpr std::array<std::string_view, 0> KEYWORD_SHIELD{  };
+		static inline constexpr std::array KEYWORD_UNSIL{ "unsil"sv, };
+
+		//static inline constexpr std::array INCLUSION{};
+		static inline constexpr auto EXCLUSION = UTIL_MergeArray(/*KEYWORD_SHIELD, */KEYWORD_UNSIL, std::array{ "shield"sv, });
+	};
+	struct AnimDat_ShieldedIdle final {
+		static inline constexpr std::array KEYWORD{ "idle"sv, };
+		static inline constexpr std::array KEYWORD_SHIELD{ "shield"sv, };
+	};
+	struct AnimDat_Shoot final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr std::array KEYWORD_UNSIL{ "unsil"sv, };
+
+		static inline constexpr auto EXCLUSION = UTIL_MergeArray(/*KEYWORD_SHIELD, */KEYWORD_UNSIL, std::array{ "last"sv, "empty"sv, }, std::array{ "shield"sv, });
+	};
+	struct AnimDat_ShootLast final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr std::array KEYWORD_UNSIL{ "unsil"sv, };
+
+		static inline constexpr auto INCLUSION = std::array{ "last"sv, "empty"sv, };
+		static inline constexpr auto EXCLUSION = UTIL_MergeArray(/*KEYWORD_SHIELD, */KEYWORD_UNSIL, std::array{ "shield"sv, });
+	};
+	struct AnimDat_Draw final {
+		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, };
+		static inline constexpr std::array KEYWORD_UNSIL{ "unsil"sv, };
+
+		static inline constexpr auto EXCLUSION = UTIL_MergeArray(/*KEYWORD_SHIELD, */KEYWORD_UNSIL, std::array{ "shield"sv, });
+	};
+	struct AnimDat_Reload final {
+		static inline constexpr std::array KEYWORD{ "reload"sv, };
+		static inline constexpr std::array KEYWORD_UNSIL{ "unsil"sv, };
+
+		static inline constexpr auto EXCLUSION = UTIL_MergeArray(/*KEYWORD_SHIELD, */KEYWORD_UNSIL, std::array{ "shield"sv, });
+	};
 
 	static inline constexpr std::array SOUND_ALL
 	{

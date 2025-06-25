@@ -113,6 +113,7 @@
     <ClCompile Include="..\..\metamod-p\hlsdk\hlsdk.ixx" />
     <ClCompile Include="..\..\metamod-p\metamod\metamod_api.ixx" />
     <ClCompile Include="..\Common\amxxmodule_api.ixx" />
+    <ClCompile Include="..\Common\UtlArray.ixx" />
     <ClCompile Include="..\Common\UtlString.ixx" />
     <ClCompile Include="..\Common\WinAPI.cpp" />
     <ClCompile Include="..\Common\WinAPI.ixx" />

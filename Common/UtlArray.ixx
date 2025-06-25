@@ -22,3 +22,42 @@ constexpr auto UTIL_MergeArray(std::array<T, I1> const& array1, std::array<T, I2
 		return UTIL_MergeArray(merged, rests...);
 	}
 }
+
+export template <auto lhs, auto rhs> [[nodiscard]]
+consteval auto UTIL_ArraySetDiff() noexcept
+{
+	constexpr auto fnVectorMaker =
+		[]() static consteval
+	{
+		auto l_cpy{ lhs };
+		auto r_cpy{ rhs };
+
+		std::ranges::sort(l_cpy);
+		std::ranges::sort(r_cpy);
+
+		std::vector<typename std::remove_cvref_t<decltype(lhs)>::value_type> r{};
+		std::ranges::set_difference(l_cpy, r_cpy, std::back_inserter(r));
+
+		return r;
+	};
+
+	auto const vec = fnVectorMaker();
+	constexpr auto iSize = fnVectorMaker().size();	// #MSVC_BUG_CONSTEVAL
+	std::array<typename std::remove_cvref_t<decltype(lhs)>::value_type, iSize> arr{};
+
+	std::ranges::copy_n(vec.cbegin(), std::ssize(vec), arr.begin());
+
+	return arr;
+}
+
+export template <typename T> [[nodiscard]]
+auto UTIL_ArraySetDiff(std::span<T const> lhs, std::span<T const> rhs) noexcept
+{
+	std::set<T, std::ranges::less> const l_ordered{ std::from_range, lhs };	// #UPDATE_AT_CPP23 flat_set
+	std::set<T, std::ranges::less> const r_ordered{ std::from_range, rhs };	// #UPDATE_AT_CPP23 flat_set
+
+	std::vector<T> r{};
+	std::ranges::set_difference(l_ordered, r_ordered, std::back_inserter(r));
+
+	return r;
+}

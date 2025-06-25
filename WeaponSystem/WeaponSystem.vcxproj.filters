@@ -159,6 +159,9 @@
     <ClCompile Include="Effects.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
+    <ClCompile Include="..\Common\UtlArray.ixx">
+      <Filter>Hydrogenium</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp">
