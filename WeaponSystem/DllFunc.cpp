@@ -95,7 +95,7 @@ void fw_UpdateClientData_Post(const edict_t* ent, qboolean sendweapons, clientda
 {
 	// post
 
-	if (cd->m_iId == WEAPON_USP)
+	if (cd->m_iId == WEAPON_USP || cd->m_iId == WEAPON_GLOCK18)
 	{
 		cd->m_iId = 0;
 	}

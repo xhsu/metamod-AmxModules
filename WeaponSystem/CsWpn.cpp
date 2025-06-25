@@ -527,11 +527,8 @@ struct CBasePistol : CPrefabWeapon
 						// weapon is useable. Reload if empty and weapon has waited as long as it has to after firing
 						if (!m_iClip && !(T::DAT_ITEM_FLAGS & ITEM_FLAG_NOAUTORELOAD) && !m_Scheduler.Exist(TASK_ALL_BEHAVIORS | TASK_ANIMATION))
 						{
-							if (m_flFamasShoot == 0 && m_flGlock18Shoot == 0)
-							{
-								Reload();
-								continue;
-							}
+							Reload();
+							continue;
 						}
 					}
 				}
@@ -718,7 +715,7 @@ struct CBasePistol : CPrefabWeapon
 		}
 	}
 
-	Task Task_Shoot() noexcept
+	Task Task_ShootingEffects() noexcept
 	{
 		CRTP()->EFFC_SND_FIRING();
 
@@ -750,28 +747,32 @@ struct CBasePistol : CPrefabWeapon
 		CreateGunSmoke(m_pPlayer, requires { T::FLAG_IS_PISTOL; });
 	}
 
-	void PrimaryAttack() noexcept override
+	Task Task_BurstFire() noexcept
 	{
-		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
-		{
-			// LUNA: You can't shoot when shields up!
-			if (m_iWeaponState & WPNSTATE_SHIELD_DRAWN)
-				return;
-		}
-
 		if constexpr (requires { T::m_bBurstFire; })
 		{
-			if (m_iWeaponState & WPNSTATE_GLOCK18_BURST_MODE)
-				m_iGlock18ShotsFired = 0;
-			else if (++m_iShotsFired > 1)
-				return;
+			CRTP()->m_bBurstFire = true;
+
+			for (int i = 0; i < T::DAT_BURST_FIRE_COUNT; ++i)
+			{
+				WeaponFire();
+
+				if (!m_iClip)
+					break;
+
+				co_await T::DAT_BURST_FIRE_INVERVAL;
+			}
+
+			CRTP()->m_bBurstFire = false;
+
+			co_await (T::DAT_BURST_FIRE_INVERVAL * 10.f);
 		}
 		else
-		{
-			if (++m_iShotsFired > 1)
-				return;
-		}
+			co_return;
+	}
 
+	void WeaponFire() noexcept
+	{
 		if (m_flLastFire)
 		{
 			m_flAccuracy = std::ranges::clamp(
@@ -786,12 +787,9 @@ struct CBasePistol : CPrefabWeapon
 
 		if (m_iClip <= 0)
 		{
-			if (m_fFireOnEmpty)
-			{
-				PlayEmptySound();
-				m_flNextPrimaryAttack = 0.2f;
-				m_Scheduler.Enroll([]() static noexcept -> Task { co_await 0.2f; }(), TASK_BEHAVIOR_SHOOT, true);
-			}
+			PlayEmptySound();
+			m_flNextPrimaryAttack = 0.2f;
+			m_Scheduler.Enroll([]() static noexcept -> Task { co_await 0.2f; }(), TASK_BEHAVIOR_SHOOT, true);
 
 			if (ZBot::Manager())
 				ZBot::Manager()->OnEvent(EVENT_WEAPON_FIRED_ON_EMPTY, m_pPlayer);
@@ -849,8 +847,15 @@ struct CBasePistol : CPrefabWeapon
 			// [ ] Smoke by tex color - ENT
 			// [ ] Sound of bullet hit - emit from Smoke ENT
 
-		m_flNextPrimaryAttack = m_flNextSecondaryAttack = T::DAT_FIRE_INTERVAL;
-		m_Scheduler.Enroll([]() static noexcept -> Task { co_await T::DAT_FIRE_INTERVAL; }(), TASK_BEHAVIOR_SHOOT, true);
+		bool bShouldUseRegularFireInterval = true;
+		if constexpr (requires { T::m_bBurstFire; })
+			bShouldUseRegularFireInterval = !CRTP()->m_bBurstFire;
+
+		if (bShouldUseRegularFireInterval)
+		{
+			m_flNextPrimaryAttack = m_flNextSecondaryAttack = T::DAT_FIRE_INTERVAL;
+			m_Scheduler.Enroll([]() static noexcept -> Task { co_await T::DAT_FIRE_INTERVAL; }(), TASK_BEHAVIOR_SHOOT, true);
+		}
 
 		static constexpr CAnimationGroup<T, typename T::AnimDat_Shoot> ShootAnimSelector{};
 		auto pShootingAnim = ShootAnimSelector(this);
@@ -887,7 +892,31 @@ struct CBasePistol : CPrefabWeapon
 
 		CRTP()->EFFC_RECOIL();
 
-		m_Scheduler.Enroll(Task_Shoot());
+		m_Scheduler.Enroll(Task_ShootingEffects());	// Can't be overwrite by others.
+	}
+
+	void PrimaryAttack() noexcept override
+	{
+		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
+		{
+			// LUNA: You can't shoot when shields up!
+			if (m_iWeaponState & WPNSTATE_SHIELD_DRAWN)
+				return;
+		}
+
+		if constexpr (requires { T::m_bBurstFire; })
+		{
+			if (m_iWeaponState & WPNSTATE_GLOCK18_BURST_MODE)
+			{
+				m_Scheduler.Enroll(Task_BurstFire(), TASK_BEHAVIOR_SHOOT, true);
+				return;
+			}
+		}
+
+		if (++m_iShotsFired > 1)
+			return;
+
+		WeaponFire();
 	}
 
 	qboolean PlayEmptySound() noexcept override
@@ -1016,7 +1045,7 @@ struct G18C_VER2 : CBasePistol<G18C_VER2>
 		static inline constexpr std::array KEYWORD_SHIELD{ "shield"sv, };
 	};
 	struct AnimDat_Shoot final {
-		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };	// G18 gets a weird anim sequence.
 		static inline constexpr auto EXCLUSION = std::array{ "last"sv, "empty"sv, };
 	};
 	struct AnimDat_ShootLast final {
@@ -1063,6 +1092,8 @@ struct G18C_VER2 : CBasePistol<G18C_VER2>
 	static inline constexpr auto DAT_BULLET_TYPE = BULLET_PLAYER_9MM;
 	static inline constexpr auto DAT_RANGE_MODIFIER = 0.75f;
 	static inline constexpr auto DAT_FIRE_INTERVAL = 0.2f - 0.05f;
+	static inline constexpr auto DAT_BURST_FIRE_INVERVAL = 0.05f;
+	static inline constexpr auto DAT_BURST_FIRE_COUNT = 3;
 
 	static inline constexpr float EXPR_DAMAGE() noexcept {
 		return 25.f;
