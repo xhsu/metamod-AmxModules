@@ -843,7 +843,7 @@ struct CBasePistol : CPrefabWeapon
 			// [X] Smoking gun - ENT
 			// [X] Sound - ev_hldm.cpp
 		// II. Traceline - Make our own FireBullets function?
-			// [ ] Trace effect - MSG
+			// [X] Trace effect - MSG
 			// [X] Bullet hole - MSG
 			// [ ] Debris - MSG
 			// [ ] Smoke by tex color - ENT
@@ -888,6 +888,16 @@ struct CBasePistol : CPrefabWeapon
 		CRTP()->EFFC_RECOIL();
 
 		m_Scheduler.Enroll(Task_Shoot());
+	}
+
+	qboolean PlayEmptySound() noexcept override
+	{
+		if constexpr (requires { T::FLAG_IS_PISTOL; })
+			g_engfuncs.pfnEmitSound(m_pPlayer->edict(), CHAN_WEAPON, "weapons/dryfire_pistol.wav", 0.8f, ATTN_NORM, SND_FL_NONE, PITCH_NORM);
+		else
+			g_engfuncs.pfnEmitSound(m_pPlayer->edict(), CHAN_WEAPON, "weapons/dryfire_rifle.wav", 0.8f, ATTN_NORM, SND_FL_NONE, PITCH_NORM);
+
+		return true;
 	}
 
 	Task Task_Reload(seq_timing_t const* pReloadAnim) noexcept

@@ -8,6 +8,7 @@ import ConditionZero;
 import Decal;
 import Message;
 import Resources;
+import Task;
 import Uranus;
 import ZBot;
 
@@ -44,11 +45,16 @@ inline Resource::Add SFX_RICO_METAL[] =
 
 extern edict_t* CreateWallPuff(TraceResult const& tr) noexcept;
 
-static inline void VFX_BulletImpact(TraceResult const& tr, char cTextureType) noexcept
+static inline Task VFX_BulletImpact(Vector const vecSrc, TraceResult const tr, char cTextureType) noexcept
 {
+	co_await TaskScheduler::NextFrame::Rank[0];
+
 	UTIL_Decal(tr.pHit, tr.vecEndPos, UTIL_GetRandomOne(Decal::GUNSHOT));
 	CreateWallPuff(tr);
 
+	co_await TaskScheduler::NextFrame::Rank[0];
+
+	// Wall hitting effect.
 	switch (cTextureType)
 	{
 	case CHAR_TEX_METAL:
@@ -86,6 +92,8 @@ static inline void VFX_BulletImpact(TraceResult const& tr, char cTextureType) no
 		break;
 	}
 
+	co_await TaskScheduler::NextFrame::Rank[0];
+
 	// ricochet sfx
 	if (UTIL_Random())
 	{
@@ -117,6 +125,15 @@ static inline void VFX_BulletImpact(TraceResult const& tr, char cTextureType) no
 			break;
 		}
 	}
+
+	co_await TaskScheduler::NextFrame::Rank[0];
+
+	// Tracer effect.
+	MsgBroadcast(SVC_TEMPENTITY);
+	WriteData(TE_TRACER);
+	WriteData(vecSrc);
+	WriteData(tr.vecEndPos);
+	MsgEnd();
 }
 
 // Go to the trouble of combining multiple pellets into a single damage call.
@@ -310,7 +327,7 @@ Vector2D CS_FireBullets3(
 			else
 				flDistanceModifier = 0.5f;
 
-			VFX_BulletImpact(tr, cTextureType);
+			TaskScheduler::Enroll(VFX_BulletImpact(vecSrc, tr, cTextureType));
 
 			[[maybe_unused]] auto const vecPrevSrc{ vecSrc }, vecPrevEndpos{ tr.vecEndPos - vecDir * flPenetrationPower };
 			vecSrc = tr.vecEndPos + (vecDir * flPenetrationPower);
@@ -325,7 +342,7 @@ Vector2D CS_FireBullets3(
 			{
 				g_engfuncs.pfnTraceLine(vecPrevEndpos, vecPrevSrc, dont_ignore_glass | dont_ignore_monsters, pAttacker->edict(), &tr);
 				if (!tr.fAllSolid && tr.fInOpen && tr.flFraction != 1)
-					VFX_BulletImpact(tr, cTextureType);
+					TaskScheduler::Enroll(VFX_BulletImpact(vecPrevEndpos, tr, cTextureType));
 			}
 		}
 		else
