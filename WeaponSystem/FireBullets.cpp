@@ -1,4 +1,8 @@
+#ifdef __INTELLISENSE__
 import std;
+#else
+import std.compat;	// #MSVC_BUG_STDCOMPAT
+#endif
 import hlsdk;
 
 import UtlRandom;
@@ -13,10 +17,70 @@ import Uranus;
 import ZBot;
 
 
-inline Resource::Add GIBS_CONCRETE{ "models/gibs_wallbrown.mdl" };
-//inline Resource::Add GIBS_METAL{ "models/gibs_stairsmetal.mdl" };
-//inline Resource::Add GIBS_RUBBLE{ "models/gibs_rubble.mdl" };
-inline Resource::Add GIBS_WOOD{ "models/gibs_woodplank.mdl" };
+//inline Resource::Add GIBS_BRICK{ "models/gibs_brick.mdl" };	// LUNA: DS using this for ... Slosh??
+inline Resource::Add GIBS_CONCRETE{ "models/gibs_concrete.mdl" };
+inline Resource::Add GIBS_FLORA{ "models/gibs_flora.mdl" };
+inline Resource::Add GIBS_GLASS{ "models/gibs_glass.mdl" };
+inline Resource::Add GIBS_WOOD{ "models/gibs_wood.mdl" };
+
+inline Resource::Add SFX_HIT_METAL[] =
+{
+	"player/pl_metal1.wav",
+	"player/pl_metal2.wav",
+	"player/pl_metal3.wav",
+	"player/pl_metal4.wav",
+};
+
+inline Resource::Add SFX_HIT_DIRT[] =
+{
+	"player/pl_dirt1.wav",
+	"player/pl_dirt2.wav",
+	"player/pl_dirt3.wav",
+	"player/pl_dirt4.wav",
+};
+
+inline Resource::Add SFX_HIT_VENT[] =
+{
+	"player/pl_duct1.wav",
+	"player/pl_duct2.wav",
+	"player/pl_duct3.wav",
+	"player/pl_duct4.wav",
+};
+
+inline Resource::Add SFX_HIT_GRATE[] =
+{
+	"player/pl_grate1.wav",
+	"player/pl_grate2.wav",
+	"player/pl_grate3.wav",
+	"player/pl_grate4.wav",
+};
+
+inline Resource::Add SFX_HIT_TILE[] =
+{
+	"player/pl_tile1.wav",
+	"player/pl_tile2.wav",
+	"player/pl_tile3.wav",
+	"player/pl_tile4.wav",
+	"player/pl_tile5.wav",
+};
+
+inline Resource::Add SFX_HIT_SLOSH[] =
+{
+	"player/pl_slosh1.wav",
+	"player/pl_slosh2.wav",
+	"player/pl_slosh3.wav",
+	"player/pl_slosh4.wav",
+};
+
+inline Resource::Add SFX_HIT_SNOW[] =
+{
+	"player/pl_snow1.wav",
+	"player/pl_snow2.wav",
+	"player/pl_snow3.wav",
+	"player/pl_snow4.wav",
+	"player/pl_snow5.wav",
+	"player/pl_snow6.wav",
+};
 
 inline Resource::Add SFX_HIT_WOOD[] =
 {
@@ -24,6 +88,38 @@ inline Resource::Add SFX_HIT_WOOD[] =
 	"player/pl_wood2.wav",
 	"player/pl_wood3.wav",
 	"player/pl_wood4.wav",
+};
+
+inline Resource::Add SFX_HIT_GLASS[] =
+{
+	"debris/glass1.wav",
+	"debris/glass2.wav",
+	"debris/glass3.wav",
+	"debris/glass4.wav",
+};
+
+inline Resource::Add SFX_HIT_CARPET[] =
+{
+	"player/pl_carpet1.wav",
+	"player/pl_carpet2.wav",
+	"player/pl_carpet3.wav",
+	"player/pl_carpet4.wav",
+};
+
+inline Resource::Add SFX_HIT_GRASS[] =
+{
+	"player/pl_grass1.wav",
+	"player/pl_grass2.wav",
+	"player/pl_grass3.wav",
+	"player/pl_grass4.wav",
+};
+
+inline Resource::Add SFX_HIT_GRAVEL[] =
+{
+	"player/pl_gravel1.wav",
+	"player/pl_gravel2.wav",
+	"player/pl_gravel3.wav",
+	"player/pl_gravel4.wav",
 };
 
 inline Resource::Add SFX_RICO_GENERIC[] =
@@ -41,53 +137,222 @@ inline Resource::Add SFX_RICO_METAL[] =
 {
 	"weapons/ric_metal-1.wav",
 	"weapons/ric_metal-2.wav",
+	"debris/r_metal3.wav",
+	"debris/r_metal4.wav",
 };
 
+// Effect.cpp
 extern edict_t* CreateWallPuff(TraceResult const& tr) noexcept;
 extern edict_t* CreateSpark3D(TraceResult const& tr) noexcept;
+//
 
-static inline Task VFX_BulletImpact(Vector const vecSrc, TraceResult const tr, char cTextureType) noexcept
+static inline Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTextureType, float flDamage) noexcept
 {
 	co_await TaskScheduler::NextFrame::Rank[0];
 
 	UTIL_Decal(tr.pHit, tr.vecEndPos, UTIL_GetRandomOne(Decal::GUNSHOT));
-	CreateWallPuff(tr);
 
 	co_await TaskScheduler::NextFrame::Rank[0];
 
-	// Wall hitting effect.
+	// Wall impact particles.
 	switch (cTextureType)
 	{
-	case CHAR_TEX_METAL:
-	case CHAR_TEX_VENT:
-		CreateSpark3D(tr);
+	case CHAR_TEX_FLESH:
+	case CHAR_TEX_SLOSH:
+		// Absolutely no effect on these two.
 		break;
 
+	case CHAR_TEX_METAL:
+	case CHAR_TEX_VENT:
 	case CHAR_TEX_GRATE:
 	case CHAR_TEX_COMPUTER:
-		MsgPVS(SVC_TEMPENTITY, tr.vecEndPos + tr.vecPlaneNormal);
-		WriteData(TE_SPARKS);
-		WriteData(tr.vecEndPos + tr.vecPlaneNormal);
+		CreateSpark3D(tr);
+		UTIL_DLight(tr.vecEndPos, 1.f, { 255, 120, 100, }, 0.1f, 0);
+
+		MsgBroadcast(SVC_TEMPENTITY);
+		WriteData(TE_STREAK_SPLASH);
+		WriteData(tr.vecEndPos);
+		WriteData(tr.vecPlaneNormal);	// dir
+		WriteData((uint8_t)10);	// color
+		WriteData(UTIL_Random<uint16_t>(72, 96));	// count
+		WriteData((uint16_t)std::clamp(flDamage * 2.f, 120.f, 240.f));	// base speed
+		WriteData(uint16_t(std::clamp(flDamage * 2.f, 120.f, 240.f) * 0.75f));	// random velocity
 		MsgEnd();
+
 		break;
 
 	case CHAR_TEX_WOOD:
 		UTIL_BreakModel(
-			tr.vecEndPos, Vector(1, 1, 1) /* Invalid Arg? */, tr.vecPlaneNormal * UTIL_Random(75, 100),
+			tr.vecEndPos, Vector(1, 1, 1) /* Invalid Arg? */, tr.vecPlaneNormal * flDamage * 2.f,
 			UTIL_Random(0.8f, 1.2f),
 			GIBS_WOOD,
-			UTIL_Random(2, 4),
+			(uint8_t)std::clamp(std::lroundf(flDamage / 4.f), 2l, 16l),
 			UTIL_Random(6.f, 9.f),
 			1 << 3	/* wood sfx */
 		);
 
+		CreateWallPuff(tr);
+		break;
+
+	case CHAR_TEX_CONCRETE:
+	case CHAR_TEX_DIRT:
+	case CHAR_TEX_TILE:
+	case CHAR_TEX_GRAVEL:
+		UTIL_BreakModel(
+			tr.vecEndPos, Vector(0.1, 0.1, 0.1) /* Invalid Arg? */, tr.vecPlaneNormal * flDamage * 2.f,
+			UTIL_Random(0.8f, 1.2f),
+			GIBS_CONCRETE,
+			(uint8_t)std::clamp(std::lroundf(flDamage / 4.f), 2l, 16l),
+			UTIL_Random(6.f, 9.f),
+			0
+		);
+		// 1 << 0 - glass
+		// 1 << 1 - metal
+		// 3 - none?
+		// 1 << 2 - none?
+		// 5 - none
+		// 6 - none
+		// 7 - none
+		// 1 << 3 - wood
+		// 9 - none
+
+		CreateWallPuff(tr);
+		break;
+
+	case CHAR_TEX_GLASS:
+		UTIL_BreakModel(
+			tr.vecEndPos, Vector(1, 1, 1) /* Invalid Arg? */, tr.vecPlaneNormal * flDamage * 2.f,
+			UTIL_Random(0.8f, 1.2f),
+			GIBS_GLASS,
+			(uint8_t)std::clamp(std::lroundf(flDamage / 4.f), 2l, 16l),
+			UTIL_Random(6.f, 9.f),
+			1 << 0	/* glass sfx */
+		);
+
+		CreateWallPuff(tr);
+		break;
+
+	case CHAR_TEX_GRASS_CS:
+	case CHAR_TEX_GRASS_CZ:
+		UTIL_BreakModel(
+			tr.vecEndPos, Vector(1, 1, 1) /* Invalid Arg? */, tr.vecPlaneNormal * flDamage * 2.f,
+			UTIL_Random(0.8f, 1.2f),
+			GIBS_FLORA,
+			(uint8_t)std::clamp(std::lroundf(flDamage / 4.f), 2l, 16l),
+			UTIL_Random(6.f, 9.f),
+			0
+		);
+		break;
+
+	default:
+		CreateWallPuff(tr);
+		break;
+	}
+
+	// Bullet impact SFX
+	switch (cTextureType)
+	{
+	case CHAR_TEX_METAL:
+		g_engfuncs.pfnEmitAmbientSound(
+			ent_cast<edict_t*>(0), tr.vecEndPos,
+			UTIL_GetRandomOne(SFX_HIT_METAL),
+			0.9f, ATTN_NORM, SND_FL_NONE, 96 + UTIL_Random(0, 0xF)
+		);
+		break;
+
+	case CHAR_TEX_DIRT:
+		g_engfuncs.pfnEmitAmbientSound(
+			ent_cast<edict_t*>(0), tr.vecEndPos,
+			UTIL_GetRandomOne(SFX_HIT_DIRT),
+			0.9f, ATTN_NORM, SND_FL_NONE, 96 + UTIL_Random(0, 0xF)
+		);
+		break;
+
+	case CHAR_TEX_VENT:
+		g_engfuncs.pfnEmitAmbientSound(
+			ent_cast<edict_t*>(0), tr.vecEndPos,
+			UTIL_GetRandomOne(SFX_HIT_VENT),
+			0.5f, ATTN_NORM, SND_FL_NONE, 96 + UTIL_Random(0, 0xF)
+		);
+		break;
+
+	case CHAR_TEX_GRATE:
+		g_engfuncs.pfnEmitAmbientSound(
+			ent_cast<edict_t*>(0), tr.vecEndPos,
+			UTIL_GetRandomOne(SFX_HIT_GRATE),
+			0.9f, ATTN_NORM, SND_FL_NONE, 96 + UTIL_Random(0, 0xF)
+		);
+		break;
+
+	case CHAR_TEX_TILE:
+		g_engfuncs.pfnEmitAmbientSound(
+			ent_cast<edict_t*>(0), tr.vecEndPos,
+			UTIL_GetRandomOne(SFX_HIT_TILE),
+			0.8f, ATTN_NORM, SND_FL_NONE, 96 + UTIL_Random(0, 0xF)
+		);
+		break;
+
+	case CHAR_TEX_SLOSH:
+		g_engfuncs.pfnEmitAmbientSound(
+			ent_cast<edict_t*>(0), tr.vecEndPos,
+			UTIL_GetRandomOne(SFX_HIT_SLOSH),
+			0.9f, ATTN_NORM, SND_FL_NONE, 96 + UTIL_Random(0, 0xF)
+		);
+		break;
+
+	case CHAR_TEX_SNOW:
+		g_engfuncs.pfnEmitAmbientSound(
+			ent_cast<edict_t*>(0), tr.vecEndPos,
+			UTIL_GetRandomOne(SFX_HIT_SNOW),
+			0.7f, ATTN_NORM, SND_FL_NONE, 96 + UTIL_Random(0, 0xF)
+		);
+		break;
+
+	case CHAR_TEX_WOOD:
 		g_engfuncs.pfnEmitAmbientSound(
 			ent_cast<edict_t*>(0), tr.vecEndPos,
 			UTIL_GetRandomOne(SFX_HIT_WOOD),
 			0.9f, ATTN_NORM, SND_FL_NONE, 96 + UTIL_Random(0, 0xF)
 		);
-
 		break;
+
+	case CHAR_TEX_COMPUTER:
+	case CHAR_TEX_GLASS:
+		g_engfuncs.pfnEmitAmbientSound(
+			ent_cast<edict_t*>(0), tr.vecEndPos,
+			UTIL_GetRandomOne(SFX_HIT_GLASS),
+			0.8f, ATTN_NORM, SND_FL_NONE, 96 + UTIL_Random(0, 0xF)
+		);
+		break;
+
+		// Extentions by CZDS
+	case CHAR_TEX_CARPET:
+		g_engfuncs.pfnEmitAmbientSound(
+			ent_cast<edict_t*>(0), tr.vecEndPos,
+			UTIL_GetRandomOne(SFX_HIT_CARPET),
+			1.f, ATTN_STATIC, SND_FL_NONE, 96 + UTIL_Random(0, 0xF)
+		);
+		break;
+
+	case CHAR_TEX_GRASS_CS:
+	case CHAR_TEX_GRASS_CZ:
+		g_engfuncs.pfnEmitAmbientSound(
+			ent_cast<edict_t*>(0), tr.vecEndPos,
+			UTIL_GetRandomOne(SFX_HIT_GRASS),
+			1.f, ATTN_STATIC, SND_FL_NONE, 96 + UTIL_Random(0, 0xF)
+		);
+		break;
+
+	case CHAR_TEX_GRAVEL:
+		g_engfuncs.pfnEmitAmbientSound(
+			ent_cast<edict_t*>(0), tr.vecEndPos,
+			UTIL_GetRandomOne(SFX_HIT_GRAVEL),
+			0.9f, ATTN_NORM, SND_FL_NONE, 96 + UTIL_Random(0, 0xF)
+		);
+		break;
+
+	case CHAR_TEX_FLESH:
+		// Should we add helmet and vest and flesh hurt sound here?
 
 	default:
 		break;
@@ -328,7 +593,7 @@ Vector2D CS_FireBullets3(
 			else
 				flDistanceModifier = 0.5f;
 
-			TaskScheduler::Enroll(VFX_BulletImpact(vecSrc, tr, cTextureType));
+			TaskScheduler::Enroll(VFX_BulletImpact(vecSrc, tr, cTextureType, flCurDmg));
 
 			[[maybe_unused]] auto const vecPrevSrc{ vecSrc }, vecPrevEndpos{ tr.vecEndPos - vecDir * flPenetrationPower };
 			vecSrc = tr.vecEndPos + (vecDir * flPenetrationPower);
@@ -343,7 +608,7 @@ Vector2D CS_FireBullets3(
 			{
 				g_engfuncs.pfnTraceLine(vecPrevEndpos, vecPrevSrc, dont_ignore_glass | dont_ignore_monsters, pAttacker->edict(), &tr);
 				if (!tr.fAllSolid && tr.fInOpen && tr.flFraction != 1)
-					TaskScheduler::Enroll(VFX_BulletImpact(vecPrevEndpos, tr, cTextureType));
+					TaskScheduler::Enroll(VFX_BulletImpact(vecPrevEndpos, tr, cTextureType, flCurDmg));
 			}
 		}
 		else

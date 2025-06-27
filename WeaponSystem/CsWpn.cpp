@@ -238,15 +238,15 @@ struct CBasePistol : CPrefabWeapon
 
 	qboolean UseDecrement() noexcept override { return true; }
 	int iItemSlot() noexcept override { return T::DAT_SLOT + 1; }
-	void Think() noexcept final {}
-	void ItemPostFrame() noexcept final { m_Scheduler.Think(); }
+	void Think() noexcept final { if (!m_pPlayer) m_Scheduler.Think(); }
+	void ItemPostFrame() noexcept final { if (m_pPlayer) m_Scheduler.Think(); }
 
 	void Spawn() noexcept override
 	{
 		Precache();
 
 		m_iId = T::PROTOTYPE_ID;
-		g_engfuncs.pfnSetModel(edict(), T::MODEL_W);
+		g_engfuncs.pfnSetModel(this->edict(), T::MODEL_W);
 
 		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
 			m_iWeaponState &= ~WPNSTATE_SHIELD_DRAWN;
@@ -263,7 +263,7 @@ struct CBasePistol : CPrefabWeapon
 		}
 
 		// Get ready to fall down
-		FallInit();
+		this->FallInit();
 
 		// extend
 		__super::Spawn();
@@ -461,14 +461,10 @@ struct CBasePistol : CPrefabWeapon
 			else if ((m_pPlayer->pev->button & IN_RELOAD) && T::DAT_MAX_CLIP != WEAPON_NOCLIP
 				&& !m_fInReload && !m_Scheduler.Exist(TASK_ALL_BEHAVIORS))
 			{
-				// reload when reload is pressed, or if no buttons are down and weapon is empty.
-				if (m_flFamasShoot == 0 && m_flGlock18Shoot == 0)
+				if (!(m_iWeaponState & WPNSTATE_SHIELD_DRAWN))
 				{
-					if (!(m_iWeaponState & WPNSTATE_SHIELD_DRAWN))
-					{
-						// reload when reload is pressed, or if no buttons are down and weapon is empty.
-						Reload();
-					}
+					// reload when reload is pressed, or if no buttons are down and weapon is empty.
+					Reload();
 				}
 			}
 
@@ -723,20 +719,14 @@ struct CBasePistol : CPrefabWeapon
 		if (!m_pPlayer->IsAlive())
 			co_return;
 
-		float flRadModifier = 1.f;
-		if constexpr (requires { T::FLAG_SECATK_SILENCER; })
+		if (!IsSilenced())
 		{
-			if (m_iWeaponState & (WPNSTATE_USP_SILENCED | WPNSTATE_M4A1_SILENCED))
-				flRadModifier = 0.5f;
+			UTIL_DLight(m_pPlayer->GetGunPosition(), 4.5f, { 255, 150, 15 }, 8, 60);
+
+			co_await TaskScheduler::NextFrame::Rank[0];
+			if (!m_pPlayer->IsAlive())
+				co_return;
 		}
-		if constexpr (T::PROTOTYPE_ID == WEAPON_TMP)
-			flRadModifier = 0.4f;
-
-		UTIL_DLight(m_pPlayer->GetGunPosition(), 4.5f * flRadModifier, { 255, 150, 15 }, 255, 8, 60);
-
-		co_await TaskScheduler::NextFrame::Rank[0];
-		if (!m_pPlayer->IsAlive())
-			co_return;
 
 		EjectBrassLate();
 
@@ -811,15 +801,8 @@ struct CBasePistol : CPrefabWeapon
 		m_pPlayer->m_iWeaponVolume = T::DAT_FIRE_VOLUME;
 		m_pPlayer->m_iWeaponFlash = T::DAT_FIRE_FLASH;
 
-		if constexpr (requires { T::FLAG_SECATK_SILENCER; })
-		{
-			if (!(m_iWeaponState & WPNSTATE_USP_SILENCED))
-				m_pPlayer->pev->effects |= EF_MUZZLEFLASH;
-		}
-		else
-		{
+		if (!IsSilenced())
 			m_pPlayer->pev->effects |= EF_MUZZLEFLASH;
-		}
 
 		[[maybe_unused]]
 		auto const [vecFwd, vecRight, vecUp]
@@ -843,9 +826,10 @@ struct CBasePistol : CPrefabWeapon
 		// II. Traceline - Make our own FireBullets function?
 			// [X] Trace effect - MSG
 			// [X] Bullet hole - MSG
-			// [ ] Debris - MSG
+			// [X] Debris - MSG - DSHGFHDS
 			// [ ] Smoke by tex color - ENT
-			// [ ] Sound of bullet hit - emit from Smoke ENT
+			// [X] Sound of bullet hit
+			// [ ] Bullet flyby whizz noise.
 
 		bool bShouldUseRegularFireInterval = true;
 		if constexpr (requires { T::m_bBurstFire; })
@@ -1016,6 +1000,145 @@ struct CBasePistol : CPrefabWeapon
 	{
 		__super::Holster(skiplocal);
 		m_Scheduler.Clear();
+	}
+
+public: // Materializing weapon, like CWeaponBox
+
+	int m_iWeaponBoxStoredAmmo{};
+
+	void Drop() noexcept override
+	{
+		// From CBasePlayer::DropPlayerItem
+
+		if (m_pPlayer->m_bIsVIP)
+		{
+			gmsgTextMsg::Send(m_pPlayer->edict(), HUD_PRINTCENTER, "#Weapon_Cannot_Be_Dropped");
+			return;
+		}
+		else if (m_pPlayer->HasShield())
+		{
+			m_pPlayer->DropShield();
+			return;
+		}
+
+		if (!CanDrop())
+		{
+			gmsgTextMsg::Send(m_pPlayer->edict(), HUD_PRINTCENTER, "#Weapon_Cannot_Be_Dropped");
+			return;
+		}
+
+		// take item off hud
+		m_pPlayer->pev->weapons &= ~(1 << T::PROTOTYPE_ID);
+
+		// No more weapon
+		if ((m_pPlayer->pev->weapons & ~(1 << WEAPON_SUIT)) == 0)
+			m_pPlayer->m_iHideHUD |= HIDEHUD_WEAPONS;
+
+		g_pGameRules->GetNextBestWeapon(m_pPlayer, this);
+		g_engfuncs.pfnMakeVectors(m_pPlayer->pev->angles);
+
+		if constexpr (T::DAT_SLOT == 0)
+			m_pPlayer->m_bHasPrimary = false;
+
+		if (FClassnameIs(pev, "weapon_c4"))
+		{
+			// Refer to ReGameDLL for BOT stuff.
+		}
+
+		// From CWeaponBox::Spawn and packPlayerWeapon()
+
+		pev->angles = Angles{};
+		pev->movetype = MOVETYPE_TOSS;
+		pev->solid = SOLID_NOT;
+		pev->owner = m_pPlayer->edict();
+
+		pev->velocity = m_pPlayer->pev->velocity + m_pPlayer->pev->v_angle.Front() * 400;
+
+		g_engfuncs.pfnSetSize(edict(), g_vecZero, g_vecZero);
+		g_engfuncs.pfnSetModel(edict(), T::MODEL_W);
+		g_engfuncs.pfnSetOrigin(edict(), m_pPlayer->GetGunPosition() + m_pPlayer->pev->v_angle.Front() * 70);
+
+		// From CWeaponBox::PackWeapon
+
+		if (m_pPlayer)
+		{
+			if (m_pPlayer->m_pActiveItem == this)
+			{
+				Holster();
+			}
+
+			if (!m_pPlayer->RemovePlayerItem(this))
+			{
+				// failed to unhook the weapon from the player!
+				assert(false);
+				return;
+			}
+		}
+
+		pev->spawnflags |= SF_NORESPAWN;
+		//pWeapon->pev->movetype = MOVETYPE_NONE;
+		//pWeapon->pev->solid = SOLID_NOT;
+		pev->effects = 0;
+		//pWeapon->pev->modelindex = 0;
+		//pWeapon->pev->model = 0;
+		//pWeapon->pev->owner = ENT(pev);
+		//pWeapon->SetThink(nullptr);
+		//pWeapon->SetTouch(nullptr);
+		pev->aiment = nullptr;	// LUNA: fuck my life..
+
+		// From ::packPlayerItem
+		if constexpr (T::DAT_ITEM_FLAGS & ITEM_FLAG_EXHAUSTIBLE)
+		{
+			auto const iAmmoIndex = m_pPlayer->GetAmmoIndex(T::DAT_AMMO_NAME);
+			assert(iAmmoIndex == m_iPrimaryAmmoType);
+
+			if (iAmmoIndex != -1)
+			{
+				// From pWeaponBox->PackAmmo
+
+				m_iWeaponBoxStoredAmmo += m_pPlayer->m_rgAmmo[iAmmoIndex];
+
+				m_pPlayer->m_rgAmmo[iAmmoIndex] = 0;
+			}
+		}
+
+		m_pPlayer = nullptr;
+
+		//TaskScheduler::Enroll(
+		//	[](EHANDLE<CBaseMaterializableWeapon> self) static noexcept -> Task
+		//{
+		//	for (; (bool)self;)
+		//	{
+		//		g_engfuncs.pfnServerPrint(
+		//			std::format("eff: {}, model: {}\n", self->pev->effects, STRING(self->pev->model)).c_str()
+		//		);
+		//
+		//		co_await 0.01f;
+		//
+		//		MsgBroadcast(SVC_TEMPENTITY);
+		//		WriteData(TE_SPARKS);
+		//		WriteData(self->pev->origin);
+		//		MsgEnd();
+		//
+		//		co_await 0.1f;
+		//	}
+		//}(this)
+		//);
+	}
+
+public:
+	constexpr bool IsSilenced() const noexcept
+	{
+		if constexpr (requires { T::FLAG_SECATK_SILENCER; })
+		{
+			if (m_iWeaponState & (WPNSTATE_USP_SILENCED | WPNSTATE_M4A1_SILENCED))
+				return true;
+		}
+
+		if constexpr (T::PROTOTYPE_ID == WEAPON_TMP)
+			return true;
+		else
+			return false;
 	}
 
 private:
