@@ -50,6 +50,10 @@ enum EWeaponTaskFlags2 : std::uint64_t
 	TASK_ANIMATION = (1ull << 16),	// Always exclusive.
 
 	TASK_ALL_WEAKS = TASK_ALL_BEHAVIORS << 8,
+
+	TASK_MATERIALIZED_UNSET_OWNER = (1ull << 24),
+
+	TASK_ALL_MATERIALIZED = TASK_ALL_WEAKS << 8,
 };
 
 extern edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol) noexcept;
@@ -238,7 +242,12 @@ struct CBasePistol : CPrefabWeapon
 
 	qboolean UseDecrement() noexcept override { return true; }
 	int iItemSlot() noexcept override { return T::DAT_SLOT + 1; }
-	void Think() noexcept final { if (!m_pPlayer) m_Scheduler.Think(); }
+	void Think() noexcept final
+	{
+		pev->nextthink = 0.1f;
+		if (!m_pPlayer)
+			m_Scheduler.Think();
+	}
 	void ItemPostFrame() noexcept final { if (m_pPlayer) m_Scheduler.Think(); }
 
 	void Spawn() noexcept override
@@ -1042,19 +1051,20 @@ public: // Materializing weapon, like CWeaponBox
 
 		if (FClassnameIs(pev, "weapon_c4"))
 		{
-			// Refer to ReGameDLL for BOT stuff.
+			// Refer to ReGameDLL for BOT stuff. #TODO_PIW_C4
 		}
 
 		// From CWeaponBox::Spawn and packPlayerWeapon()
 
 		pev->angles = Angles{};
 		pev->movetype = MOVETYPE_TOSS;
-		pev->solid = SOLID_NOT;
-		pev->owner = m_pPlayer->edict();
+		pev->solid = SOLID_BBOX;
+		pev->owner = m_pPlayer->edict();	// Preventing self-touching for a sec.
 
 		pev->velocity = m_pPlayer->pev->velocity + m_pPlayer->pev->v_angle.Front() * 400;
 
-		g_engfuncs.pfnSetSize(edict(), g_vecZero, g_vecZero);
+		//g_engfuncs.pfnSetSize(edict(), g_vecZero, g_vecZero);
+		g_engfuncs.pfnSetSize(edict(), Vector{ -3.5, -3.5, -1.5 }, Vector{ 3.5, 3.5, 1.5 });
 		g_engfuncs.pfnSetModel(edict(), T::MODEL_W);
 		g_engfuncs.pfnSetOrigin(edict(), m_pPlayer->GetGunPosition() + m_pPlayer->pev->v_angle.Front() * 70);
 
@@ -1104,6 +1114,9 @@ public: // Materializing weapon, like CWeaponBox
 
 		m_pPlayer = nullptr;
 
+		this->SetTouch(&T::Touch_Materialized);
+		m_Scheduler.Enroll(Task_UnsetOwner(), TASK_MATERIALIZED_UNSET_OWNER, true);
+
 		//TaskScheduler::Enroll(
 		//	[](EHANDLE<CBaseMaterializableWeapon> self) static noexcept -> Task
 		//{
@@ -1124,6 +1137,98 @@ public: // Materializing weapon, like CWeaponBox
 		//	}
 		//}(this)
 		//);
+	}
+
+	Task Task_UnsetOwner() const noexcept
+	{
+		for (;; co_await TaskScheduler::NextFrame::Rank[0])
+		{
+			if (!(pev->flags & FL_ONGROUND))
+				continue;
+
+			pev->owner = nullptr;
+			break;
+		}
+	}
+
+	// To Remove weapon
+	// Ham_Weapon_RetireWeapon
+	// Ham_RemovePlayerItem
+	// Ham_Item_Kill
+
+	void Touch_Materialized(CBaseEntity* pOther) noexcept
+	{
+		// From CWeaponBox::Touch
+
+		if (!pOther->IsPlayer())
+		{
+			// only players may touch a weaponbox.
+			return;
+		}
+
+		if (!pOther->IsAlive())
+		{
+			// no dead guys.
+			return;
+		}
+
+		CBasePlayer* pPlayer = static_cast<CBasePlayer*>(pOther);
+
+		if (pPlayer->m_bIsVIP || pPlayer->m_bShieldDrawn)
+			return;
+
+		// LUNA: Extention by ReGameDLL.
+		pPlayer->OnTouchingWeapon(this);
+
+		if constexpr ((T::PROTOTYPE_ID == WEAPON_ELITE || T::DAT_SLOT == 0))
+		{
+			if (pPlayer->HasShield())
+				return;
+		}
+
+		bool bPickedUp = false;
+
+		if (pPlayer->IsBot())
+		{
+			// Allowing this weapon? #TODO_PIW_BOT
+		}
+
+		if (FClassnameIs(this->pev, "weapon_c4"))
+		{
+			// refer to ReGameDLL #TODO_PIW_C4
+		}
+
+		if constexpr (T::DAT_SLOT == 0 || T::DAT_SLOT == 1)
+		{
+			// Hud slot is 1 less than actual slot.
+			if (pPlayer->m_rgpPlayerItems[T::DAT_SLOT + 1] == nullptr
+				&& pPlayer->AddPlayerItem(this))
+			{
+				this->AttachToPlayer(pPlayer);
+				g_engfuncs.pfnEmitSound(pPlayer->edict(), CHAN_ITEM, "items/gunpickup2.wav", VOL_NORM, ATTN_NORM, SND_FL_NONE, PITCH_NORM);
+
+				pPlayer->GiveAmmo(m_iWeaponBoxStoredAmmo, (char*)T::DAT_AMMO_NAME, T::DAT_AMMO_MAX);
+
+				bPickedUp = true;
+			}
+
+		}
+		else if constexpr (T::DAT_SLOT == 3)
+		{
+			// #TODO_PIW_GRENADE
+		}
+
+		// From materialzed CWeaponBox to invisible weapon.
+		if (bPickedUp)
+		{
+			// Is this already done in AttachToPlayer() ?
+		}
+	}
+
+	void AttachToPlayer(CBasePlayer* pPlayer) noexcept override
+	{
+		__super::AttachToPlayer(pPlayer);
+		this->m_Scheduler.Delist(TASK_ALL_MATERIALIZED);
 	}
 
 public:
