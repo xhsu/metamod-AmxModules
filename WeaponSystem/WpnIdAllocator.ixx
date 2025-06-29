@@ -1,9 +1,17 @@
+module;
+
 #ifdef __INTELLISENSE__
 #include <ranges>
 #include <algorithm>
 #endif
 
-import std;
+export module WpnIdAllocator;
+
+#ifdef __INTELLISENSE__
+import std;	// #MSVC_BUG_STDCOMPAT
+#else
+import std.compat;
+#endif
 import hlsdk;
 
 import UtlArray;
@@ -11,8 +19,24 @@ import UtlArray;
 import CBase;
 import Message;
 
-using std::int32_t;
-using std::uint8_t;
+
+// Weapon Classify
+
+inline constexpr std::array ONEHANDED_IDX{ WEAPON_P228, WEAPON_FIVESEVEN, WEAPON_USP, WEAPON_GLOCK18, WEAPON_DEAGLE, };
+inline constexpr std::array DUALWIELDING_IDX{ WEAPON_ELITE, };
+inline constexpr std::array SHOTGUN_IDX{ WEAPON_XM1014, WEAPON_M3, };
+inline constexpr std::array SMG_IDX{ WEAPON_MAC10, WEAPON_UMP45, WEAPON_MP5N, WEAPON_TMP, WEAPON_P90, };
+inline constexpr std::array ASSAULT_IDX{ WEAPON_AUG, WEAPON_GALIL, WEAPON_FAMAS, WEAPON_M4A1, WEAPON_SG552, WEAPON_AK47, };
+inline constexpr std::array SNIPER_IDX{ WEAPON_SCOUT, WEAPON_SG550, WEAPON_AWP, WEAPON_G3SG1, };
+inline constexpr std::array LMG_IDX{ WEAPON_M249, };
+inline constexpr std::array MELEE_IDX{ WEAPON_KNIFE, };
+inline constexpr std::array THROWABLE_IDX{ WEAPON_HEGRENADE, WEAPON_SMOKEGRENADE, WEAPON_FLASHBANG, };
+inline constexpr std::array EQUIPMENT_IDX{ WEAPON_C4, };
+
+inline constexpr auto FULL_AUTO_IDX = UTIL_MergeArray(SMG_IDX, ASSAULT_IDX, LMG_IDX);
+
+
+// Manager Template
 
 template <typename T>
 struct ItemSlotManager
@@ -63,7 +87,7 @@ struct ItemSlotManager
 		// By the time we reach 128, the original order was certainly fully overrided.
 		self.m_iOrderInSlot %= 128;
 
-		if (self.m_iOrderInSlot < T::SLOT_ITEMS_COUNT + 1)	[[unlikely]]
+		if (self.m_iOrderInSlot < T::SLOT_ITEMS_COUNT + 1) [[unlikely]]
 			self.m_iOrderInSlot = T::SLOT_ITEMS_COUNT + 1;
 
 		// Record what is using this slot so we can free that later.
@@ -89,15 +113,13 @@ struct ItemSlotManager
 	}
 };
 
-struct PistolSlotManager : ItemSlotManager<PistolSlotManager>
+[[nodiscard]] constexpr
+auto BuildInitSlotOccupied(std::span<WeaponIdType const> rgiOpenedSlots) noexcept
+	-> std::array<std::string_view, 31>
 {
-	static inline constexpr auto SLOT_ITEMS_COUNT = 6;
-	static inline constexpr auto SLOT_ID = 1;
-
-	std::array<std::string_view, 31> m_rgszSlotOccupied
-	{
+	std::array<std::string_view, 31> ret{
 		"WEAPON_NONE",
-		"",						// WEAPON_P228
+		"WEAPON_P228",
 		"WEAPON_NIL",
 		"WEAPON_SCOUT",
 		"WEAPON_HEGRENADE",
@@ -106,14 +128,14 @@ struct PistolSlotManager : ItemSlotManager<PistolSlotManager>
 		"WEAPON_MAC10",
 		"WEAPON_AUG",
 		"WEAPON_SMOKEGRENADE",
-		"WEAPON_ELITE",			// Does not consider as a regular pistol. (onehanded)
-		"",						// WEAPON_FIVESEVEN
+		"WEAPON_ELITE",
+		"WEAPON_FIVESEVEN",
 		"WEAPON_UMP45",
 		"WEAPON_SG550",
 		"WEAPON_GALIL",
 		"WEAPON_FAMAS",
-		"",						// WEAPON_USP
-		"",						// WEAPON_GLOCK18
+		"WEAPON_USP",
+		"WEAPON_GLOCK18",
 		"WEAPON_AWP",
 		"WEAPON_MP5N",
 		"WEAPON_M249",
@@ -122,32 +144,47 @@ struct PistolSlotManager : ItemSlotManager<PistolSlotManager>
 		"WEAPON_TMP",
 		"WEAPON_G3SG1",
 		"WEAPON_FLASHBANG",
-		"",						// WEAPON_DEAGLE
+		"WEAPON_DEAGLE",
 		"WEAPON_SG552",
 		"WEAPON_AK47",
 		"WEAPON_KNIFE",
 		"WEAPON_P90",
 	};
-};
 
-static std::array<PistolSlotManager, 33> g_rgPlayerPistolMgrs{};
+	for (auto&& iId : rgiOpenedSlots)
+		ret[iId] = "";
 
-auto PistolSlotMgr(CBasePlayer* pPlayer) noexcept -> PistolSlotManager*
-{
-	auto& mgr = g_rgPlayerPistolMgrs.at(pPlayer->entindex());
-	mgr.m_pPlayer = pPlayer;
-
-	return std::addressof(mgr);
+	return ret;
 }
 
-inline constexpr std::array PISTOLS_IDX{ WEAPON_P228, WEAPON_ELITE, WEAPON_FIVESEVEN, WEAPON_USP, WEAPON_GLOCK18, WEAPON_DEAGLE, };
-inline constexpr std::array SHOTGUN_IDX{ WEAPON_XM1014, WEAPON_M3, };
-inline constexpr std::array SMG_IDX{ WEAPON_MAC10, WEAPON_UMP45, WEAPON_MP5N, WEAPON_TMP, WEAPON_P90, };
-inline constexpr std::array ASSAULT_IDX{ WEAPON_AUG, WEAPON_GALIL, WEAPON_FAMAS, WEAPON_M4A1, WEAPON_SG552, WEAPON_AK47, };
-inline constexpr std::array SNIPER_IDX{ WEAPON_SCOUT, WEAPON_SG550, WEAPON_AWP, WEAPON_G3SG1, };
-inline constexpr std::array LMG_IDX{ WEAPON_M249, };
-inline constexpr std::array MELEE_IDX{ WEAPON_KNIFE, };
-inline constexpr std::array THROWABLE_IDX{ WEAPON_HEGRENADE, WEAPON_SMOKEGRENADE, WEAPON_FLASHBANG, };
-inline constexpr std::array EQUIPMENT_IDX{ WEAPON_C4, };
 
-inline constexpr auto FULL_AUTO_IDX = UTIL_MergeArray(SMG_IDX, ASSAULT_IDX, LMG_IDX);
+// Manager Classes
+
+struct PistolSlotManager : ItemSlotManager<PistolSlotManager>
+{
+	static inline constexpr auto SLOT_ITEMS_COUNT = 6;
+	static inline constexpr auto SLOT_ID = 1;
+
+	std::array<std::string_view, 31> m_rgszSlotOccupied = BuildInitSlotOccupied(ONEHANDED_IDX);
+
+	using ItemSlotManager<PistolSlotManager>::OccupySlot;
+	using ItemSlotManager<PistolSlotManager>::FreeSlot;
+};
+
+inline constinit std::array<PistolSlotManager, 33> g_rgPlayerPistolMgrs{};
+
+export [[nodiscard]]
+auto PistolSlotMgr(CBasePlayer* pPlayer) noexcept -> PistolSlotManager*
+{
+	try
+	{
+		auto& mgr = g_rgPlayerPistolMgrs.at(pPlayer->entindex());
+		mgr.m_pPlayer = pPlayer;
+
+		return std::addressof(mgr);
+	}
+	catch (...)
+	{
+		return nullptr;
+	}
+}

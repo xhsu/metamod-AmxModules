@@ -130,7 +130,7 @@
     <ClCompile Include="Plugin.ixx" />
     <ClCompile Include="Resources.ixx" />
     <ClCompile Include="Tutor.cpp" />
-    <ClCompile Include="WpnIdxAllocator.cpp" />
+    <ClCompile Include="WpnIdAllocator.ixx" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp" />

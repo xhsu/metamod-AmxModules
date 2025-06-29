@@ -720,7 +720,7 @@ struct CBasePistol : CPrefabWeapon
 		}
 	}
 
-	Task Task_ShootingEffects() noexcept
+	Task Task_ShootingEffects() const noexcept
 	{
 		CRTP()->EFFC_SND_FIRING();
 

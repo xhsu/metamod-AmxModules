@@ -126,9 +126,6 @@
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Query.ixx">
       <Filter>CSDK</Filter>
     </ClCompile>
-    <ClCompile Include="WpnIdxAllocator.cpp">
-      <Filter>Sources</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Models.ixx">
       <Filter>CSDK</Filter>
     </ClCompile>
@@ -163,6 +160,9 @@
       <Filter>Hydrogenium</Filter>
     </ClCompile>
     <ClCompile Include="DllFunc.PM.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="WpnIdAllocator.ixx">
       <Filter>Sources</Filter>
     </ClCompile>
   </ItemGroup>
