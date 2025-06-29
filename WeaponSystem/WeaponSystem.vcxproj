@@ -121,6 +121,7 @@
     <ClCompile Include="CsWpn.cpp" />
     <ClCompile Include="Decal.ixx" />
     <ClCompile Include="DllFunc.cpp" />
+    <ClCompile Include="DllFunc.PM.cpp" />
     <ClCompile Include="Effects.cpp" />
     <ClCompile Include="FireBullets.cpp" />
     <ClCompile Include="Hook.cpp" />

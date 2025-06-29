@@ -20,6 +20,13 @@ extern void fw_OnFreeEntPrivateData(edict_t* pEnt) noexcept;
 extern auto fw_ShouldCollide(edict_t* pentTouched, edict_t* pentOther) noexcept -> qboolean;
 //
 
+// DllFunc.PM.cpp
+extern META_RES fw_PM_Move(playermove_t* ppmove, qboolean server) noexcept;
+extern void fw_PM_Move_Post(playermove_t* ppmove, qboolean server) noexcept;
+extern META_RES fw_PlayerPostThink(edict_t*) noexcept;
+extern qboolean fw_AddToFullPack_Post(entity_state_t* pState, int iEntIndex, edict_t* pEdict, edict_t* pClientSendTo, qboolean cl_lw, qboolean bIsPlayer, unsigned char* pSet) noexcept;
+//
+
 
 // Receive engine function table from engine.
 // This appears to be the _first_ DLL routine called by the engine, so we do some setup operations here.
@@ -61,7 +68,7 @@ static int HookGameDLLExportedFn(DLL_FUNCTIONS *pFunctionTable, int *interfaceVe
 		.pfnServerDeactivate		= nullptr,
 
 		.pfnPlayerPreThink			= nullptr,
-		.pfnPlayerPostThink			= nullptr,
+		.pfnPlayerPostThink			= [](edict_t* player) noexcept { gpMetaGlobals->mres = fw_PlayerPostThink(player); },
 
 		.pfnStartFrame				= nullptr,
 		.pfnParmsNewLevel			= nullptr,
@@ -76,7 +83,7 @@ static int HookGameDLLExportedFn(DLL_FUNCTIONS *pFunctionTable, int *interfaceVe
 
 		.pfnSys_Error				= nullptr,
 
-		.pfnPM_Move					= nullptr,
+		.pfnPM_Move					= [](playermove_t* ppmove, qboolean server) noexcept { gpMetaGlobals->mres = fw_PM_Move(ppmove, server); },
 		.pfnPM_Init					= nullptr,
 		.pfnPM_FindTextureType		= nullptr,
 
@@ -160,13 +167,13 @@ static int HookGameDLLExportedFn_Post(DLL_FUNCTIONS *pFunctionTable, int *interf
 
 		.pfnSys_Error				= nullptr,
 
-		.pfnPM_Move					= nullptr,
+		.pfnPM_Move					= &fw_PM_Move_Post,
 		.pfnPM_Init					= nullptr,
 		.pfnPM_FindTextureType		= nullptr,
 
 		.pfnSetupVisibility			= nullptr,
 		.pfnUpdateClientData		= &fw_UpdateClientData_Post,
-		.pfnAddToFullPack			= nullptr,
+		.pfnAddToFullPack			= &fw_AddToFullPack_Post,
 		.pfnCreateBaseline			= nullptr,
 		.pfnRegisterEncoders		= nullptr,
 		.pfnGetWeaponData			= nullptr,

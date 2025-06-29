@@ -47,6 +47,12 @@ void __fastcall OrpheuF_DropPlayerItem(CBasePlayer* pPlayer, void* edx, char con
 
 void __cdecl OrpheuF_packPlayerItem(CBasePlayer* pPlayer, CBasePlayerItem* pItem, bool packAmmo) noexcept
 {
+	if (UTIL_IsLocalRtti(pItem))
+	{
+		pItem->Drop();
+		return;
+	}
+
 	return HookInfo::packPlayerItem(pPlayer, pItem, packAmmo);
 }
 

@@ -162,6 +162,9 @@
     <ClCompile Include="..\Common\UtlArray.ixx">
       <Filter>Hydrogenium</Filter>
     </ClCompile>
+    <ClCompile Include="DllFunc.PM.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp">

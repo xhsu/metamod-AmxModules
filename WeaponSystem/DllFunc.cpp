@@ -156,5 +156,5 @@ qboolean fw_ShouldCollide(edict_t* pentTouched, edict_t* pentOther) noexcept
 		return pPrefab->ShouldCollide(pentOther);
 	}
 
-	return 0;
+	return false;
 }

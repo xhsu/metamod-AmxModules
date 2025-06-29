@@ -1043,6 +1043,9 @@ public: // Materializing weapon, like CWeaponBox
 		if ((m_pPlayer->pev->weapons & ~(1 << WEAPON_SUIT)) == 0)
 			m_pPlayer->m_iHideHUD |= HIDEHUD_WEAPONS;
 
+#ifdef _DEBUG
+		if (g_pGameRules)	// #FIXME crash when exiting game?
+#endif
 		g_pGameRules->GetNextBestWeapon(m_pPlayer, this);
 		g_engfuncs.pfnMakeVectors(m_pPlayer->pev->angles);
 
@@ -1057,15 +1060,16 @@ public: // Materializing weapon, like CWeaponBox
 		// From CWeaponBox::Spawn and packPlayerWeapon()
 
 		pev->angles = Angles{};
-		pev->movetype = MOVETYPE_TOSS;
 		pev->solid = SOLID_BBOX;
+		pev->movetype = MOVETYPE_BOUNCE;
+		pev->friction = 0.7f;
+		pev->gravity = 1.4f;
 		pev->owner = m_pPlayer->edict();	// Preventing self-touching for a sec.
 
 		pev->velocity = m_pPlayer->pev->velocity + m_pPlayer->pev->v_angle.Front() * 400;
 
-		//g_engfuncs.pfnSetSize(edict(), g_vecZero, g_vecZero);
-		g_engfuncs.pfnSetSize(edict(), Vector{ -3.5, -3.5, -1.5 }, Vector{ 3.5, 3.5, 1.5 });
 		g_engfuncs.pfnSetModel(edict(), T::MODEL_W);
+		g_engfuncs.pfnSetSize(edict(), Vector{ -16, -16, -0.5f }, Vector{ 16, 16, 0.5f });
 		g_engfuncs.pfnSetOrigin(edict(), m_pPlayer->GetGunPosition() + m_pPlayer->pev->v_angle.Front() * 70);
 
 		// From CWeaponBox::PackWeapon
@@ -1095,9 +1099,24 @@ public: // Materializing weapon, like CWeaponBox
 		//pWeapon->SetThink(nullptr);
 		//pWeapon->SetTouch(nullptr);
 		pev->aiment = nullptr;	// LUNA: fuck my life..
+		pev->vuser4.z = 9527;	// LUNA: a marker to PM_MOVE so it won't block player walking.
 
 		// From ::packPlayerItem
-		if constexpr (T::DAT_ITEM_FLAGS & ITEM_FLAG_EXHAUSTIBLE)
+
+		bool bAnotherWeaponUsingSameAmmo = false;
+		for (CBasePlayerWeapon* pWeapon : Query::all_weapons_belongs_to(m_pPlayer))
+		{
+			if (pWeapon == this)
+				continue;
+
+			if (pWeapon->m_iPrimaryAmmoType == this->m_iPrimaryAmmoType)
+			{
+				bAnotherWeaponUsingSameAmmo = true;
+				break;
+			}
+		}
+
+		if (T::DAT_ITEM_FLAGS & ITEM_FLAG_EXHAUSTIBLE || !bAnotherWeaponUsingSameAmmo)
 		{
 			auto const iAmmoIndex = m_pPlayer->GetAmmoIndex(T::DAT_AMMO_NAME);
 			assert(iAmmoIndex == m_iPrimaryAmmoType);
@@ -1116,6 +1135,7 @@ public: // Materializing weapon, like CWeaponBox
 
 		this->SetTouch(&T::Touch_Materialized);
 		m_Scheduler.Enroll(Task_UnsetOwner(), TASK_MATERIALIZED_UNSET_OWNER, true);
+		m_Scheduler.Enroll(Task_PrintInfo());
 
 		//TaskScheduler::Enroll(
 		//	[](EHANDLE<CBaseMaterializableWeapon> self) static noexcept -> Task
@@ -1141,20 +1161,32 @@ public: // Materializing weapon, like CWeaponBox
 
 	Task Task_UnsetOwner() const noexcept
 	{
-		for (;; co_await TaskScheduler::NextFrame::Rank[0])
-		{
-			if (!(pev->flags & FL_ONGROUND))
-				continue;
-
-			pev->owner = nullptr;
-			break;
-		}
+		co_await 0.5f;
+		pev->owner = nullptr;
 	}
 
 	// To Remove weapon
 	// Ham_Weapon_RetireWeapon
 	// Ham_RemovePlayerItem
 	// Ham_Item_Kill
+
+	void Touch_Nonplayer(CBaseEntity* pOther) noexcept
+	{
+		if (pev->flags & FL_ONGROUND)
+		{
+			pev->velocity *= 0.95f;
+		}
+	}
+
+	Task Task_PrintInfo() const noexcept
+	{
+		for (;; co_await 0.1f)
+		{
+			//g_engfuncs.pfnServerPrint(
+			//	std::format("SOLID: {}\n", (int)pev->solid).c_str()
+			//);
+		}
+	}
 
 	void Touch_Materialized(CBaseEntity* pOther) noexcept
 	{
@@ -1163,13 +1195,13 @@ public: // Materializing weapon, like CWeaponBox
 		if (!pOther->IsPlayer())
 		{
 			// only players may touch a weaponbox.
-			return;
+			return Touch_Nonplayer(pOther);
 		}
 
 		if (!pOther->IsAlive())
 		{
 			// no dead guys.
-			return;
+			return Touch_Nonplayer(pOther);
 		}
 
 		CBasePlayer* pPlayer = static_cast<CBasePlayer*>(pOther);
@@ -1183,7 +1215,7 @@ public: // Materializing weapon, like CWeaponBox
 		if constexpr ((T::PROTOTYPE_ID == WEAPON_ELITE || T::DAT_SLOT == 0))
 		{
 			if (pPlayer->HasShield())
-				return;
+				return Touch_Nonplayer(pOther);
 		}
 
 		bool bPickedUp = false;
@@ -1208,6 +1240,7 @@ public: // Materializing weapon, like CWeaponBox
 				g_engfuncs.pfnEmitSound(pPlayer->edict(), CHAN_ITEM, "items/gunpickup2.wav", VOL_NORM, ATTN_NORM, SND_FL_NONE, PITCH_NORM);
 
 				pPlayer->GiveAmmo(m_iWeaponBoxStoredAmmo, (char*)T::DAT_AMMO_NAME, T::DAT_AMMO_MAX);
+				m_iWeaponBoxStoredAmmo = 0;
 
 				bPickedUp = true;
 			}
