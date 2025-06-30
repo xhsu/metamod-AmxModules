@@ -15,10 +15,9 @@ import WinAPI;
 
 
 // CsWpn.cpp
-struct G18C_VER2;
-extern template void LINK_ENTITY_TO_CLASS<G18C_VER2>(entvars_t* pev) noexcept;
-struct USP2;
-extern template void LINK_ENTITY_TO_CLASS<USP2>(entvars_t* pev) noexcept;
+extern template void LINK_ENTITY_TO_CLASS<struct CPistolGlock>(entvars_t* pev) noexcept;
+extern template void LINK_ENTITY_TO_CLASS<struct CPistolUSP>(entvars_t* pev) noexcept;
+extern template void LINK_ENTITY_TO_CLASS<struct CPistolP228>(entvars_t* pev) noexcept;
 //
 
 
@@ -27,9 +26,11 @@ PFN_ENTITYINIT __cdecl OrpheuF_GetDispatch(char const* pszClassName) noexcept
 	std::string_view const szClassname{ pszClassName };
 
 	if (szClassname == "weapon_glock18")
-		return &LINK_ENTITY_TO_CLASS<G18C_VER2>;
+		return &LINK_ENTITY_TO_CLASS<CPistolGlock>;
 	else if (szClassname == "weapon_usp")
-		return &LINK_ENTITY_TO_CLASS<USP2>;
+		return &LINK_ENTITY_TO_CLASS<CPistolUSP>;
+	else if (szClassname == "weapon_p228")
+		return &LINK_ENTITY_TO_CLASS<CPistolP228>;
 
 	return HookInfo::GetDispatch(pszClassName);
 }

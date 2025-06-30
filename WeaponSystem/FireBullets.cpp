@@ -406,7 +406,7 @@ static inline Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTexture
 // This version is used by Players, uses the random seed generator to sync client and server side shots.
 Vector2D CS_FireBullets3(
 	CBasePlayer* pAttacker, CBasePlayerItem* pInflictor,
-	float flSpread, float flDistance,
+	Vector const& vecSrcOfs, float flSpread, float flDistance,
 	int iPenetration, int iBulletType, float flDamage, float flRangeModifier) noexcept
 {
 	[[maybe_unused]] auto const iOriginalPenetration{ iPenetration };

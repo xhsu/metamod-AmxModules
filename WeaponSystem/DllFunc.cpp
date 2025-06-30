@@ -95,9 +95,13 @@ void fw_UpdateClientData_Post(const edict_t* ent, qboolean sendweapons, clientda
 {
 	// post
 
-	if (cd->m_iId == WEAPON_USP || cd->m_iId == WEAPON_GLOCK18)
+	if (auto const pPlayer = reinterpret_cast<CBasePlayer*>(ent->pvPrivateData);
+		pPlayer->IsPlayer())
 	{
-		cd->m_iId = 0;
+		if (UTIL_IsLocalRtti(pPlayer->m_pActiveItem))
+		{
+			cd->m_iId = 0;
+		}
 	}
 }
 

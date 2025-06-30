@@ -1,7 +1,11 @@
 
 #include <assert.h>	// #UPDATE_AT_CPP26 contract assert
 
+#ifdef __INTELLISENSE__
 import std;
+#else
+import std.compat;
+#endif
 import hlsdk;
 
 import UtlArray;
@@ -60,7 +64,7 @@ extern edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol) noexcept;
 
 extern Vector2D CS_FireBullets3(
 	CBasePlayer* pAttacker, CBasePlayerItem* pInflictor,
-	float flSpread, float flDistance,
+	Vector const& vecSrcOfs, float flSpread, float flDistance,
 	int iPenetration, int iBulletType, float flDamage, float flRangeModifier) noexcept;
 
 [[nodiscard]] static auto GetAnimsFromKeywords(
@@ -320,7 +324,7 @@ struct CBasePistol : CPrefabWeapon
 			p->iMaxClip = T::DAT_MAX_CLIP;
 			p->iSlot = T::DAT_SLOT;
 			p->iPosition = T::DAT_SLOT_POS;
-			p->iId = m_iId = T::PROTOTYPE_ID;
+			p->iId = T::PROTOTYPE_ID;
 			p->iFlags = T::DAT_ITEM_FLAGS;
 			p->iWeight = T::DAT_ITEM_WEIGHT;
 
@@ -777,8 +781,8 @@ struct CBasePistol : CPrefabWeapon
 			m_flAccuracy = std::ranges::clamp(
 				// Mark the time of this shot and determine the accuracy modifier based on the last shot fired...
 				CRTP()->EXPR_ACCY(),
-				T::DAT_ACCY_RANGE.first,
-				T::DAT_ACCY_RANGE.second
+				CRTP()->DAT_ACCY_RANGE.first,
+				CRTP()->DAT_ACCY_RANGE.second
 			);
 		}
 
@@ -807,8 +811,8 @@ struct CBasePistol : CPrefabWeapon
 		else
 			m_pPlayer->SetAnimation(PLAYER_ATTACK1);
 
-		m_pPlayer->m_iWeaponVolume = T::DAT_FIRE_VOLUME;
-		m_pPlayer->m_iWeaponFlash = T::DAT_FIRE_FLASH;
+		m_pPlayer->m_iWeaponVolume = CRTP()->DAT_FIRE_VOLUME;
+		m_pPlayer->m_iWeaponFlash = CRTP()->DAT_FIRE_FLASH;
 
 		if (!IsSilenced())
 			m_pPlayer->pev->effects |= EF_MUZZLEFLASH;
@@ -817,12 +821,23 @@ struct CBasePistol : CPrefabWeapon
 		auto const [vecFwd, vecRight, vecUp]
 			= (m_pPlayer->pev->v_angle + m_pPlayer->pev->punchangle).AngleVectors();
 
-		[[maybe_unused]]
-		auto const vecDir = CS_FireBullets3(
-			m_pPlayer, this,
-			CRTP()->EXPR_SPREAD(), T::DAT_EFF_SHOT_DIST, T::DAT_PENETRATION,
-			T::DAT_BULLET_TYPE, CRTP()->EXPR_DAMAGE(), T::DAT_RANGE_MODIFIER
-		);
+		if constexpr (requires { T::FLAG_DUAL_WIELDING; })
+		{
+			CS_FireBullets3(
+				m_pPlayer, this,
+				bShootingLeft ? (vecRight * -5) : (vecRight * 5),
+				CRTP()->EXPR_SPREAD(), CRTP()->DAT_EFF_SHOT_DIST, CRTP()->DAT_PENETRATION,
+				CRTP()->DAT_BULLET_TYPE, CRTP()->EXPR_DAMAGE(), CRTP()->DAT_RANGE_MODIFIER
+			);
+		}
+		else
+		{
+			CS_FireBullets3(
+				m_pPlayer, this,
+				g_vecZero, CRTP()->EXPR_SPREAD(), CRTP()->DAT_EFF_SHOT_DIST, CRTP()->DAT_PENETRATION,
+				CRTP()->DAT_BULLET_TYPE, CRTP()->EXPR_DAMAGE(), CRTP()->DAT_RANGE_MODIFIER
+			);
+		}
 
 		// LUNA:
 		// PBE can be consider as the composition of the following:
@@ -846,7 +861,7 @@ struct CBasePistol : CPrefabWeapon
 
 		if (bShouldUseRegularFireInterval)
 		{
-			m_flNextPrimaryAttack = m_flNextSecondaryAttack = T::DAT_FIRE_INTERVAL;
+			m_flNextPrimaryAttack = m_flNextSecondaryAttack = CRTP()->DAT_FIRE_INTERVAL;
 			m_Scheduler.Enroll([]() static noexcept -> Task { co_await T::DAT_FIRE_INTERVAL; }(), TASK_BEHAVIOR_SHOOT, true);
 		}
 
@@ -990,6 +1005,12 @@ struct CBasePistol : CPrefabWeapon
 			if (m_iWeaponState & WPNSTATE_SHIELD_DRAWN)
 				pAnimInfo = ShieldedAnimSelector(this);
 		}
+		else if constexpr (requires { typename T::AnimDat_OneEmptyIdle; })
+		{
+			static constexpr CAnimationGroup<T, typename T::AnimDat_OneEmptyIdle> OneEmptyAnimSelector{};
+			if (m_iClip == 1)
+				pAnimInfo = OneEmptyAnimSelector(this);
+		}
 
 		m_flTimeWeaponIdle = std::max(5.f, pAnimInfo->m_total_length);
 		m_Scheduler.Enroll(
@@ -1013,7 +1034,7 @@ struct CBasePistol : CPrefabWeapon
 
 public: // Materializing weapon, like CWeaponBox
 
-	int m_iWeaponBoxStoredAmmo{};
+	int16_t m_iWeaponBoxStoredAmmo{};
 
 	void Drop() noexcept override
 	{
@@ -1066,7 +1087,10 @@ public: // Materializing weapon, like CWeaponBox
 		pev->gravity = 1.4f;
 		pev->owner = m_pPlayer->edict();	// Preventing self-touching for a sec.
 
-		pev->velocity = m_pPlayer->pev->velocity + m_pPlayer->pev->v_angle.Front() * 400;
+		if (m_pPlayer->IsAlive())
+			pev->velocity = m_pPlayer->pev->velocity + m_pPlayer->pev->v_angle.Front() * 400;
+		else
+			pev->velocity = m_pPlayer->pev->velocity;	// Drop along with the dead guy.
 
 		g_engfuncs.pfnSetModel(edict(), T::MODEL_W);
 		g_engfuncs.pfnSetSize(edict(), Vector{ -16, -16, -0.5f }, Vector{ 16, 16, 0.5f });
@@ -1135,8 +1159,9 @@ public: // Materializing weapon, like CWeaponBox
 
 		this->SetTouch(&T::Touch_Materialized);
 		m_Scheduler.Enroll(Task_UnsetOwner(), TASK_MATERIALIZED_UNSET_OWNER, true);
+#ifdef _DEBUG
 		m_Scheduler.Enroll(Task_PrintInfo());
-
+#endif
 		//TaskScheduler::Enroll(
 		//	[](EHANDLE<CBaseMaterializableWeapon> self) static noexcept -> Task
 		//{
@@ -1178,6 +1203,7 @@ public: // Materializing weapon, like CWeaponBox
 		}
 	}
 
+#ifdef _DEBUG
 	Task Task_PrintInfo() const noexcept
 	{
 		for (;; co_await 0.1f)
@@ -1187,6 +1213,7 @@ public: // Materializing weapon, like CWeaponBox
 			//);
 		}
 	}
+#endif
 
 	void Touch_Materialized(CBaseEntity* pOther) noexcept
 	{
@@ -1239,8 +1266,11 @@ public: // Materializing weapon, like CWeaponBox
 				this->AttachToPlayer(pPlayer);
 				g_engfuncs.pfnEmitSound(pPlayer->edict(), CHAN_ITEM, "items/gunpickup2.wav", VOL_NORM, ATTN_NORM, SND_FL_NONE, PITCH_NORM);
 
-				pPlayer->GiveAmmo(m_iWeaponBoxStoredAmmo, (char*)T::DAT_AMMO_NAME, T::DAT_AMMO_MAX);
-				m_iWeaponBoxStoredAmmo = 0;
+				if (m_iWeaponBoxStoredAmmo > 0)
+				{
+					pPlayer->GiveAmmo(m_iWeaponBoxStoredAmmo, (char*)T::DAT_AMMO_NAME, T::DAT_AMMO_MAX);
+					m_iWeaponBoxStoredAmmo = 0;
+				}
 
 				bPickedUp = true;
 			}
@@ -1284,7 +1314,7 @@ private:
 	__forceinline [[nodiscard]] T const* CRTP() const noexcept { static_assert(std::is_base_of_v<CBasePistol, T>); return static_cast<T const*>(this); }
 };
 
-struct G18C_VER2 : CBasePistol<G18C_VER2>
+struct CPistolGlock : CBasePistol<CPistolGlock>
 {
 	static inline constexpr WeaponIdType PROTOTYPE_ID = WEAPON_GLOCK18;
 
@@ -1342,6 +1372,7 @@ struct G18C_VER2 : CBasePistol<G18C_VER2>
 	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
 	static inline constexpr char DAT_AMMO_NAME[] = "9mm";
 	static inline constexpr auto DAT_AMMO_MAX = 120;
+	static inline constexpr char DAT_HUD_NAME[] = "weapon_glock18";
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 2;
 	static inline constexpr auto DAT_ITEM_FLAGS = 0;
@@ -1410,9 +1441,9 @@ struct G18C_VER2 : CBasePistol<G18C_VER2>
 	bool m_bBurstFire{};	// A flag to emulate vanilla g18
 };
 
-template void LINK_ENTITY_TO_CLASS<G18C_VER2>(entvars_t* pev) noexcept;
+template void LINK_ENTITY_TO_CLASS<CPistolGlock>(entvars_t* pev) noexcept;
 
-struct USP2 : CBasePistol<USP2>
+struct CPistolUSP : CBasePistol<CPistolUSP>
 {
 	static inline constexpr WeaponIdType PROTOTYPE_ID = WEAPON_USP;
 
@@ -1486,6 +1517,7 @@ struct USP2 : CBasePistol<USP2>
 	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
 	static inline constexpr char DAT_AMMO_NAME[] = "45acp";
 	static inline constexpr auto DAT_AMMO_MAX = 100;
+	static inline constexpr char DAT_HUD_NAME[] = "weapon_usp";
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 4;
 	static inline constexpr auto DAT_ITEM_FLAGS = 0;
@@ -1556,4 +1588,108 @@ struct USP2 : CBasePistol<USP2>
 	//bool m_bBurstFire{};										// A flag to emulate vanilla g18
 };
 
-template void LINK_ENTITY_TO_CLASS<USP2>(entvars_t* pev) noexcept;
+template void LINK_ENTITY_TO_CLASS<CPistolUSP>(entvars_t* pev) noexcept;
+
+struct CPistolP228 : CBasePistol<CPistolP228>
+{
+	static inline constexpr WeaponIdType PROTOTYPE_ID = WEAPON_P228;
+
+	static inline constexpr char MODEL_V[] = "models/v_p228.mdl";
+	static inline constexpr char MODEL_V_SHIELD[] = "models/shield/v_shield_p228.mdl";
+	static inline constexpr char MODEL_W[] = "models/w_p228.mdl";
+	static inline constexpr char MODEL_P[] = "models/p_p228.mdl";
+	static inline constexpr char MODEL_P_SHIELD[] = "models/shield/p_shield_p228.mdl";
+	static inline constexpr char MODEL_SHELL[] = "models/pshell.mdl";
+
+	static inline constexpr char ANIM_3RD_PERSON[] = "onehanded";
+
+	struct AnimDat_Idle final {
+		static inline constexpr std::array KEYWORD{ "idle"sv, };
+		static inline constexpr auto EXCLUSION = std::array{ "shield"sv, };
+	};
+	struct AnimDat_ShieldedIdle final {
+		static inline constexpr std::array KEYWORD{ "idle"sv, };
+		static inline constexpr std::array KEYWORD_SHIELD{ "shield"sv, };
+	};
+	struct AnimDat_Shoot final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };	// G18 gets a weird anim sequence.
+		static inline constexpr auto EXCLUSION = std::array{ "last"sv, "empty"sv, };
+	};
+	struct AnimDat_ShootLast final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr auto INCLUSION = std::array{ "last"sv, "empty"sv, };
+	};
+	struct AnimDat_Draw final {
+		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, };
+	};
+	struct AnimDat_Reload final {
+		static inline constexpr std::array KEYWORD{ "reload"sv, };
+	};
+
+	static inline constexpr std::array SOUND_ALL
+	{
+		"weapons/p228-1.wav",
+		"weapons/p228_clipout.wav",
+		"weapons/p228_clipin.wav",
+		"weapons/p228_sliderelease.wav",
+		"weapons/p228_slidepull.wav",
+	};
+
+	static inline constexpr char EV_FIRE[] = "events/p228.sc";
+
+	static inline constexpr auto DAT_ACCY_INIT = 0.9f;
+	static inline constexpr auto DAT_ACCY_RANGE = std::pair{ 0.6f, 0.9f };
+	static inline constexpr auto DAT_MAX_CLIP = 13;
+	static inline constexpr auto DAT_MAX_SPEED = 250.f;
+	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
+	static inline constexpr char DAT_AMMO_NAME[] = "357SIG";
+	static inline constexpr auto DAT_AMMO_MAX = 52;
+	static inline constexpr char DAT_HUD_NAME[] = "weapon_p228";
+	static inline constexpr auto DAT_SLOT = 1;
+	static inline constexpr auto DAT_SLOT_POS = 3;
+	static inline constexpr auto DAT_ITEM_FLAGS = 0;
+	static inline constexpr auto DAT_ITEM_WEIGHT = 5;
+	static inline constexpr auto DAT_FIRE_VOLUME = BIG_EXPLOSION_VOLUME;
+	static inline constexpr auto DAT_FIRE_FLASH = DIM_GUN_FLASH;
+	static inline constexpr auto DAT_EFF_SHOT_DIST = 4096.f;
+	static inline constexpr auto DAT_PENETRATION = 1;
+	static inline constexpr auto DAT_BULLET_TYPE = BULLET_PLAYER_357SIG;
+	static inline constexpr auto DAT_RANGE_MODIFIER = 0.8f;
+	static inline constexpr auto DAT_FIRE_INTERVAL = 0.2f - 0.05f;
+
+	static inline constexpr float EXPR_DAMAGE() noexcept {
+		return 32.f;
+	}
+	inline float EXPR_ACCY() const noexcept {
+		return m_flAccuracy - (0.325f - (gpGlobals->time - m_flLastFire)) * 0.3f;
+	}
+	inline float EXPR_SPREAD() const noexcept
+	{
+		if (!(m_pPlayer->pev->flags & FL_ONGROUND))
+			return 1.5f * (1.f - m_flAccuracy);
+		else if (m_pPlayer->pev->velocity.LengthSquared2D() > 0)
+			return 0.255f * (1.f - m_flAccuracy);
+		else if (m_pPlayer->pev->flags & FL_DUCKING)
+			return 0.075f * (1.f - m_flAccuracy);
+		else
+			return 0.15f * (1.f - m_flAccuracy);
+	}
+	static inline auto EXPR_FIRING_SND() noexcept -> span<string const> {
+		static const auto rgszSounds{ CollectSounds("weapons/p228-") };
+		return rgszSounds;
+	}
+	inline void EFFC_RECOIL() const noexcept {
+		m_pPlayer->pev->punchangle.pitch -= 2;
+	};
+	inline void EFFC_SND_FIRING() const noexcept {
+		g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON,
+			UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(),
+			VOL_NORM, ATTN_NORM, SND_FL_NONE, UTIL_Random(94, 94 + 0xf)
+		);
+	}
+
+	static inline constexpr auto FLAG_IS_PISTOL = true;
+	static inline constexpr auto FLAG_CAN_HAVE_SHIELD = true;
+};
+
+template void LINK_ENTITY_TO_CLASS<CPistolP228>(entvars_t* pev) noexcept;

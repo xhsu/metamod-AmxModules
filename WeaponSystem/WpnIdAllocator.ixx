@@ -114,7 +114,7 @@ struct ItemSlotManager
 };
 
 [[nodiscard]] constexpr
-auto BuildInitSlotOccupied(std::span<WeaponIdType const> rgiOpenedSlots) noexcept
+auto BuildInitSlotOccupied(std::span<WeaponIdType const> rgiOpenedSlots = {}) noexcept
 	-> std::array<std::string_view, 31>
 {
 	std::array<std::string_view, 31> ret{
@@ -165,7 +165,7 @@ struct PistolSlotManager : ItemSlotManager<PistolSlotManager>
 	static inline constexpr auto SLOT_ITEMS_COUNT = 6;
 	static inline constexpr auto SLOT_ID = 1;
 
-	std::array<std::string_view, 31> m_rgszSlotOccupied = BuildInitSlotOccupied(ONEHANDED_IDX);
+	decltype(BuildInitSlotOccupied()) m_rgszSlotOccupied = BuildInitSlotOccupied(ONEHANDED_IDX);
 
 	using ItemSlotManager<PistolSlotManager>::OccupySlot;
 	using ItemSlotManager<PistolSlotManager>::FreeSlot;
