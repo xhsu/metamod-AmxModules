@@ -22,6 +22,7 @@ import Prefab;
 import Query;
 import Task;
 import Uranus;
+import WinAPI;
 import ZBot;
 
 using std::strcpy;
@@ -1263,6 +1264,11 @@ public: // Materializing weapon, like CWeaponBox
 	// Ham_RemovePlayerItem
 	// Ham_Item_Kill
 
+	void Kill(void) noexcept override
+	{
+		pev->flags |= FL_KILLME;
+	}
+
 	void Touch_Nonplayer(CBaseEntity* pOther) noexcept
 	{
 		if (pev->flags & FL_ONGROUND)
@@ -2083,3 +2089,15 @@ struct CPistolBeretta : CBasePistol<CPistolBeretta>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolBeretta>(entvars_t* pev) noexcept;
+
+void ClearNewWeapons() noexcept
+{
+	for (auto&& pEnt :
+		Query::all_nonplayer_entities()
+		| Query::as<CBasePlayerItem>()
+		| std::views::filter([](auto&& p) static noexcept { return UTIL_IsLocalRtti(p) && p->m_pPlayer == nullptr; })
+		)
+	{
+		pEnt->Kill();
+	}
+}

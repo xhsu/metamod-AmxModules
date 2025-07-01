@@ -129,6 +129,7 @@
     <ClCompile Include="Plugin.cpp" />
     <ClCompile Include="Plugin.ixx" />
     <ClCompile Include="Resources.ixx" />
+    <ClCompile Include="Round.cpp" />
     <ClCompile Include="Tutor.cpp" />
     <ClCompile Include="WpnIdAllocator.ixx" />
   </ItemGroup>

@@ -1,3 +1,5 @@
+#include <assert.h>	// #UPDATE_AT_CPP26 contract
+
 import std;
 import hlsdk;
 
@@ -13,6 +15,7 @@ import Prefab;
 import Resources;
 import Task;
 import Uranus;
+import VTFH;
 import ZBot;
 
 import Sprite;
@@ -25,6 +28,10 @@ import WinAPI;
 // Hook.cpp
 extern void DeployInlineHooks() noexcept;
 extern void RestoreInlineHooks() noexcept;
+//
+
+// Round.cpp
+extern void DeployRoundHook() noexcept;
 //
 
 static bool g_bShouldPrecache = true;
@@ -55,9 +62,12 @@ void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) 
 
 	RetrieveMessageHandles();
 	RetrieveGameRules();
+	RetrieveCBaseVirtualFn();
 	RetrieveConditionZeroVar();
 	Decal::RetrieveIndices();
 	ZBot::RetrieveManager();
+
+	DeployRoundHook();	// Do it after retrieving gamerules
 }
 
 void fw_ServerDeactivate_Post() noexcept
@@ -100,7 +110,14 @@ void fw_UpdateClientData_Post(const edict_t* ent, qboolean sendweapons, clientda
 	{
 		if (UTIL_IsLocalRtti(pPlayer->m_pActiveItem))
 		{
-			cd->m_iId = 0;
+#ifdef _DEBUG
+			auto const pWeapon = dynamic_cast<CPrefabWeapon*>(pPlayer->m_pActiveItem);
+			assert(pWeapon != nullptr);
+			pWeapon->UpdateClientData(cd);
+#else
+			auto const pWeapon = static_cast<CPrefabWeapon*>(pPlayer->m_pActiveItem);
+			pWeapon->UpdateClientData(cd);
+#endif
 		}
 	}
 }

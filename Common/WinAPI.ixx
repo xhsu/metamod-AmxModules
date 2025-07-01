@@ -22,6 +22,9 @@ export inline HMODULE gSelfModuleHandle{};
 // Is the RTTI store in my module?
 export [[nodiscard]] inline bool UTIL_IsLocalRtti(void* object) noexcept
 {
+	if (object == nullptr)
+		return false;
+
 	auto const vft = *(decltype(gSelfModuleBase)*)object;
 
 	return vft >= gSelfModuleBase && vft <= (gSelfModuleBase + gSelfModuleSize);
