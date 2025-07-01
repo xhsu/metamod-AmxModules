@@ -36,6 +36,13 @@ inline constexpr std::array EQUIPMENT_IDX{ WEAPON_C4, };
 inline constexpr auto FULL_AUTO_IDX = UTIL_MergeArray(SMG_IDX, ASSAULT_IDX, LMG_IDX);
 
 
+// Manager Interface
+
+struct IItemSlotManager
+{
+	virtual int32_t OccupySlot(std::string_view szHud, int32_t iAmmoId, int32_t iAmmoMax, uint8_t bitsFlags = 0) noexcept = 0;
+};
+
 // Manager Template
 
 template <typename T>
@@ -76,8 +83,8 @@ struct ItemSlotManager
 			szHud.data(),
 			(uint8_t)iAmmoId,
 			(uint8_t)iAmmoMax,
-			0,
-			0,
+			-1,		// Or the client will reject our message.
+			-1,
 			T::SLOT_ID,	// Slot ID, starting from 0
 			self.m_iOrderInSlot++,
 			iId,

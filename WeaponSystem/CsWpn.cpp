@@ -25,6 +25,8 @@ import Uranus;
 import WinAPI;
 import ZBot;
 
+import WpnIdAllocator;
+
 using std::strcpy;
 using std::strcmp;	// #MSVC_BUG_STDCOMPAT
 
@@ -260,7 +262,7 @@ struct CBasePistol : CPrefabWeapon
 		Precache();
 
 		m_iId = T::PROTOTYPE_ID;
-		g_engfuncs.pfnSetModel(this->edict(), T::MODEL_W);
+		g_engfuncs.pfnSetModel(CRTP()->edict(), T::MODEL_W);
 
 		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
 			m_iWeaponState &= ~WPNSTATE_SHIELD_DRAWN;
@@ -277,7 +279,10 @@ struct CBasePistol : CPrefabWeapon
 		}
 
 		// Get ready to fall down
-		this->FallInit();
+		CRTP()->FallInit();
+
+		// Gun hit effect.
+		CRTP()->pev->takedamage = DAMAGE_NO;
 
 		// extend
 		__super::Spawn();
@@ -1127,7 +1132,8 @@ public: // Materializing weapon, like CWeaponBox
 		}
 
 		// take item off hud
-		m_pPlayer->pev->weapons &= ~(1 << T::PROTOTYPE_ID);
+		m_pPlayer->pev->weapons &= ~(1 << m_iId);
+		PistolSlotMgr(m_pPlayer)->FreeSlot(CRTP()->DAT_HUD_NAME);
 
 		// No more weapon
 		if ((m_pPlayer->pev->weapons & ~(1 << WEAPON_SUIT)) == 0)
@@ -1231,26 +1237,6 @@ public: // Materializing weapon, like CWeaponBox
 #ifdef _DEBUG
 		m_Scheduler.Enroll(Task_PrintInfo());
 #endif
-		//TaskScheduler::Enroll(
-		//	[](EHANDLE<CBaseMaterializableWeapon> self) static noexcept -> Task
-		//{
-		//	for (; (bool)self;)
-		//	{
-		//		g_engfuncs.pfnServerPrint(
-		//			std::format("eff: {}, model: {}\n", self->pev->effects, STRING(self->pev->model)).c_str()
-		//		);
-		//
-		//		co_await 0.01f;
-		//
-		//		MsgBroadcast(SVC_TEMPENTITY);
-		//		WriteData(TE_SPARKS);
-		//		WriteData(self->pev->origin);
-		//		MsgEnd();
-		//
-		//		co_await 0.1f;
-		//	}
-		//}(this)
-		//);
 	}
 
 	Task Task_UnsetOwner() const noexcept
@@ -1267,6 +1253,9 @@ public: // Materializing weapon, like CWeaponBox
 	void Kill(void) noexcept override
 	{
 		pev->flags |= FL_KILLME;
+
+		if (m_pPlayer)
+			PistolSlotMgr(m_pPlayer)->FreeSlot(CRTP()->DAT_HUD_NAME);
 	}
 
 	void Touch_Nonplayer(CBaseEntity* pOther) noexcept
@@ -1288,6 +1277,11 @@ public: // Materializing weapon, like CWeaponBox
 		}
 	}
 #endif
+
+	qboolean AddDuplicate(CBasePlayerItem* pItem) noexcept override { return true; }
+	qboolean ExtractAmmo(CBasePlayerWeapon* pWeapon) noexcept override { return true; }
+	qboolean ExtractClipAmmo(CBasePlayerWeapon* pWeapon) noexcept override { return true; }
+	qboolean AddWeapon(void) noexcept override { return true; }
 
 	void Touch_Materialized(CBaseEntity* pOther) noexcept
 	{
@@ -1360,6 +1354,41 @@ public: // Materializing weapon, like CWeaponBox
 		{
 			// Is this already done in AttachToPlayer() ?
 		}
+	}
+
+	qboolean AddToPlayer(CBasePlayer* pPlayer) noexcept override
+	{
+		m_pPlayer = pPlayer;
+
+		if (!m_iPrimaryAmmoType)
+		{
+			m_iPrimaryAmmoType = pPlayer->GetAmmoIndex(CRTP()->DAT_AMMO_NAME);
+			m_iSecondaryAmmoType = 0;
+		}
+
+		m_iId = PistolSlotMgr(pPlayer)->OccupySlot(
+			CRTP()->DAT_HUD_NAME,
+			CRTP()->m_iPrimaryAmmoType,
+			CRTP()->DAT_AMMO_MAX,
+			CRTP()->DAT_ITEM_FLAGS
+		);
+
+		if (m_iId <= 0)	[[unlikely]]
+		{
+			assert(false);
+			m_iId = CRTP()->PROTOTYPE_ID;
+			return false;
+		}
+
+		if (!CRTP()->AddWeapon())
+		{
+			return false;
+		}
+
+		gmsgWeapPickup::Send(pPlayer->edict(), m_iId);
+		pPlayer->pev->weapons |= (1 << m_iId);
+
+		return true;
 	}
 
 	void AttachToPlayer(CBasePlayer* pPlayer) noexcept override
