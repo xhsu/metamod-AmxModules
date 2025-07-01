@@ -18,6 +18,9 @@ import WinAPI;
 extern template void LINK_ENTITY_TO_CLASS<struct CPistolGlock>(entvars_t* pev) noexcept;
 extern template void LINK_ENTITY_TO_CLASS<struct CPistolUSP>(entvars_t* pev) noexcept;
 extern template void LINK_ENTITY_TO_CLASS<struct CPistolP228>(entvars_t* pev) noexcept;
+extern template void LINK_ENTITY_TO_CLASS<struct CPistolDeagle>(entvars_t* pev) noexcept;
+extern template void LINK_ENTITY_TO_CLASS<struct CPistolFN57>(entvars_t* pev) noexcept;
+extern template void LINK_ENTITY_TO_CLASS<struct CPistolBeretta>(entvars_t* pev) noexcept;
 //
 
 
@@ -31,16 +34,36 @@ PFN_ENTITYINIT __cdecl OrpheuF_GetDispatch(char const* pszClassName) noexcept
 		return &LINK_ENTITY_TO_CLASS<CPistolUSP>;
 	else if (szClassname == "weapon_p228")
 		return &LINK_ENTITY_TO_CLASS<CPistolP228>;
+	else if (szClassname == "weapon_deagle")
+		return &LINK_ENTITY_TO_CLASS<CPistolDeagle>;
+	else if (szClassname == "weapon_fiveseven")
+		return &LINK_ENTITY_TO_CLASS<CPistolFN57>;
+	else if (szClassname == "weapon_elite")
+		return &LINK_ENTITY_TO_CLASS<CPistolBeretta>;
 
 	return HookInfo::GetDispatch(pszClassName);
 }
 
 void __fastcall OrpheuF_DropPlayerItem(CBasePlayer* pPlayer, void* edx, char const* pszItemName) noexcept
 {
-	if (!strlen(pszItemName) && UTIL_IsLocalRtti(pPlayer->m_pActiveItem))
+	if (strlen(pszItemName) == 0)
 	{
-		pPlayer->m_pActiveItem->Drop();
-		return;
+		if (UTIL_IsLocalRtti(pPlayer->m_pActiveItem))
+		{
+			pPlayer->m_pActiveItem->Drop();
+			return;
+		}
+	}
+	else
+	{
+		for (CBasePlayerWeapon* pWeapon : Query::all_weapons_belongs_to(pPlayer))
+		{
+			if (UTIL_IsLocalRtti(pWeapon) && strcmp(STRING(pWeapon->pev->classname), pszItemName) == 0)
+			{
+				pWeapon->Drop();
+				return;
+			}
+		}
 	}
 
 	return HookInfo::DropPlayerItem(pPlayer, edx, pszItemName);

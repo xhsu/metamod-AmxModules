@@ -177,7 +177,7 @@ struct CGunSmoke : Prefab_t
 		m_Scheduler.Enroll(Task_FadeOut(pev, 0.f, 1.f, 0.07f, UTIL_Random(0.65f, 0.85f)), TASK_FADE_OUT);
 	}
 
-	static CGunSmoke* Create(CBasePlayer* pPlayer, bool bIsPistol) noexcept
+	static CGunSmoke* Create(CBasePlayer* pPlayer, bool bIsPistol, bool bShootingLeft) noexcept
 	{
 		auto const [pEdict, pPrefab]
 			= UTIL_CreateNamedPrefab<CGunSmoke>(pPlayer, bIsPistol);
@@ -185,7 +185,10 @@ struct CGunSmoke : Prefab_t
 		auto&& [fwd, right, up]
 			= (pPlayer->pev->v_angle + pPlayer->pev->punchangle).AngleVectors();
 
-		pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * -9 + fwd * 32 + right * 8;
+		if (!bShootingLeft)
+			pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * -9 + fwd * 32 + right * 8;
+		else
+			pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * -9 + fwd * 32 - right * 8;
 
 		pPrefab->Spawn();
 		pPrefab->pev->nextthink = 0.1f;
@@ -197,9 +200,9 @@ struct CGunSmoke : Prefab_t
 	bool m_bIsPistol{};
 };
 
-edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol) noexcept
+edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol, bool bShootingLeft) noexcept
 {
-	return CGunSmoke::Create(pPlayer, bIsPistol)->edict();
+	return CGunSmoke::Create(pPlayer, bIsPistol, bShootingLeft)->edict();
 }
 
 struct CSpark3D : Prefab_t

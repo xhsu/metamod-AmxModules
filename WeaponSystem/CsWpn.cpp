@@ -60,7 +60,7 @@ enum EWeaponTaskFlags2 : std::uint64_t
 	TASK_ALL_MATERIALIZED = TASK_ALL_WEAKS << 8,
 };
 
-extern edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol) noexcept;
+extern edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol, bool bShootingLeft) noexcept;
 
 extern Vector2D CS_FireBullets3(
 	CBasePlayer* pAttacker, CBasePlayerItem* pInflictor,
@@ -242,7 +242,7 @@ struct CAnimationGroup final
 template <typename T>
 struct CBasePistol : CPrefabWeapon
 {
-	uint16_t m_usFireEv{};
+	uint16_t m_usFireEv{}, m_usFireEv2{};
 
 	qboolean UseDecrement() noexcept override { return true; }
 	int iItemSlot() noexcept override { return T::DAT_SLOT + 1; }
@@ -305,7 +305,14 @@ struct CBasePistol : CPrefabWeapon
 			g_engfuncs.pfnPrecacheSound(file.c_str());
 
 		m_iShellId = /*m_iShell =*/ g_engfuncs.pfnPrecacheModel(T::MODEL_SHELL);
-		m_usFireEv = g_engfuncs.pfnPrecacheEvent(1, T::EV_FIRE);
+
+		if constexpr (requires { T::FLAG_DUAL_WIELDING; })
+		{
+			m_usFireEv = g_engfuncs.pfnPrecacheEvent(1, T::EV_FIRE_R);	// This goes first.
+			m_usFireEv2 = g_engfuncs.pfnPrecacheEvent(1, T::EV_FIRE_L);
+		}
+		else
+			m_usFireEv = g_engfuncs.pfnPrecacheEvent(1, T::EV_FIRE);
 	}
 
 	qboolean GetItemInfo(ItemInfo* p) noexcept override
@@ -724,8 +731,53 @@ struct CBasePistol : CPrefabWeapon
 		}
 	}
 
-	Task Task_ShootingEffects() const noexcept
+	void EjectBrass(bool bShootingLeft) const noexcept
 	{
+		auto&& [fwd, right, up] = m_pPlayer->pev->v_angle.AngleVectors();
+		auto constexpr soundType = (T::PROTOTYPE_ID == WEAPON_XM1014 || T::PROTOTYPE_ID == WEAPON_M3) ? TE_BOUNCE_SHOTSHELL : TE_BOUNCE_SHELL;
+		auto const vecOrigin = m_pPlayer->pev->origin + m_pPlayer->pev->view_ofs + up * -9 + fwd * 16;
+
+		if (bShootingLeft)
+		{
+			MsgPVS(SVC_TEMPENTITY, vecOrigin);
+			WriteData(TE_MODEL);
+			WriteData(vecOrigin + right * -7);
+			WriteData(
+				m_pPlayer->pev->velocity
+					+ UTIL_Random<float>(50, 70) * right
+					+ UTIL_Random<float>(100, 150) * up
+					+ 25 * fwd
+			);
+			WriteData(msg_angle_t{ pev->angles.yaw });
+			WriteData((uint16_t)m_iShellId);
+			WriteData(soundType);
+			WriteData(static_cast<uint8_t>(50));
+			MsgEnd();
+		}
+		else
+		{
+			gmsgBrass::Region<MSG_PVS>(vecOrigin,
+				vecOrigin,
+				m_pPlayer->pev->velocity
+					+ UTIL_Random<float>(50, 70) * right
+					+ UTIL_Random<float>(100, 150) * up
+					+ 25 * fwd,
+				pev->angles.yaw,
+				m_iShellId,
+				soundType,
+				(std::uint8_t)m_pPlayer->entindex()
+			);
+		}
+	}
+
+	Task Task_ShootingEffects(bool bShootingLeft) const noexcept
+	{
+		if constexpr (requires { T::FLAG_DUAL_WIELDING; })
+		{
+			// Fuck CS left hand issue.
+			bShootingLeft = !bShootingLeft;
+		}
+
 		CRTP()->EFFC_SND_FIRING();
 
 		co_await TaskScheduler::NextFrame::Rank[0];
@@ -741,13 +793,13 @@ struct CBasePistol : CPrefabWeapon
 				co_return;
 		}
 
-		EjectBrassLate();
+		EjectBrass(bShootingLeft);
 
 		co_await TaskScheduler::NextFrame::Rank[0];
 		if (!m_pPlayer->IsAlive())
 			co_return;
 
-		CreateGunSmoke(m_pPlayer, requires { T::FLAG_IS_PISTOL; });
+		CreateGunSmoke(m_pPlayer, requires { T::FLAG_IS_PISTOL; }, bShootingLeft);	// CS got right hand issue.
 	}
 
 	Task Task_BurstFire() noexcept
@@ -868,6 +920,22 @@ struct CBasePistol : CPrefabWeapon
 		static constexpr CAnimationGroup<T, typename T::AnimDat_Shoot> ShootAnimSelector{};
 		auto pShootingAnim = ShootAnimSelector(this);
 
+		if constexpr (requires { typename T::AnimDat_ShootOther; })
+		{
+			if (bShootingLeft)
+			{
+				static constexpr CAnimationGroup<T, typename T::AnimDat_ShootOther> ShootOtherAnimSelector{};
+				pShootingAnim = ShootOtherAnimSelector(this);
+			}
+		}
+		if constexpr (requires { typename T::AnimDat_ShootOneEmpty; })
+		{
+			if (m_iClip == 1)
+			{
+				static constexpr CAnimationGroup<T, typename T::AnimDat_ShootOneEmpty> ShootOneLastAnimSelector{};
+				pShootingAnim = ShootOneLastAnimSelector(this);
+			}
+		}
 		if constexpr (requires { typename T::AnimDat_ShootLast; })
 		{
 			if (m_iClip == 0)
@@ -900,7 +968,7 @@ struct CBasePistol : CPrefabWeapon
 
 		CRTP()->EFFC_RECOIL();
 
-		m_Scheduler.Enroll(Task_ShootingEffects());	// Can't be overwrite by others.
+		m_Scheduler.Enroll(Task_ShootingEffects(bShootingLeft));	// Can't be overwrite by others.
 	}
 
 	void PrimaryAttack() noexcept override
@@ -1612,7 +1680,7 @@ struct CPistolP228 : CBasePistol<CPistolP228>
 		static inline constexpr std::array KEYWORD_SHIELD{ "shield"sv, };
 	};
 	struct AnimDat_Shoot final {
-		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };	// G18 gets a weird anim sequence.
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
 		static inline constexpr auto EXCLUSION = std::array{ "last"sv, "empty"sv, };
 	};
 	struct AnimDat_ShootLast final {
@@ -1693,3 +1761,325 @@ struct CPistolP228 : CBasePistol<CPistolP228>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolP228>(entvars_t* pev) noexcept;
+
+struct CPistolDeagle : CBasePistol<CPistolDeagle>
+{
+	static inline constexpr WeaponIdType PROTOTYPE_ID = WEAPON_DEAGLE;
+
+	static inline constexpr char MODEL_V[] = "models/v_deagle.mdl";
+	static inline constexpr char MODEL_V_SHIELD[] = "models/shield/v_shield_deagle.mdl";
+	static inline constexpr char MODEL_W[] = "models/w_deagle.mdl";
+	static inline constexpr char MODEL_P[] = "models/p_deagle.mdl";
+	static inline constexpr char MODEL_P_SHIELD[] = "models/shield/p_shield_deagle.mdl";
+	static inline constexpr char MODEL_SHELL[] = "models/pshell.mdl";
+
+	static inline constexpr char ANIM_3RD_PERSON[] = "onehanded";
+
+	struct AnimDat_Idle final {
+		static inline constexpr std::array KEYWORD{ "idle"sv, };
+		static inline constexpr auto EXCLUSION = std::array{ "shield"sv, };
+	};
+	struct AnimDat_ShieldedIdle final {
+		static inline constexpr std::array KEYWORD{ "idle"sv, };
+		static inline constexpr std::array KEYWORD_SHIELD{ "shield"sv, };
+	};
+	struct AnimDat_Shoot final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr auto EXCLUSION = std::array{ "last"sv, "empty"sv, };
+	};
+	struct AnimDat_ShootLast final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr auto INCLUSION = std::array{ "last"sv, "empty"sv, };
+	};
+	struct AnimDat_Draw final {
+		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, };
+	};
+	struct AnimDat_Reload final {
+		static inline constexpr std::array KEYWORD{ "reload"sv, };
+	};
+
+	static inline constexpr std::array SOUND_ALL
+	{
+		"weapons/deagle-1.wav",
+		"weapons/deagle-2.wav",
+		"weapons/de_clipout.wav",
+		"weapons/de_clipin.wav",
+		"weapons/de_deploy.wav",
+	};
+
+	static inline constexpr char EV_FIRE[] = "events/deagle.sc";
+
+	static inline constexpr auto DAT_ACCY_INIT = 0.9f;
+	static inline constexpr auto DAT_ACCY_RANGE = std::pair{ 0.55f, 0.9f };
+	static inline constexpr auto DAT_MAX_CLIP = 7;
+	static inline constexpr auto DAT_MAX_SPEED = 250.f;
+	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
+	static inline constexpr char DAT_AMMO_NAME[] = "50AE";
+	static inline constexpr auto DAT_AMMO_MAX = 35;
+	static inline constexpr char DAT_HUD_NAME[] = "weapon_deagle";
+	static inline constexpr auto DAT_SLOT = 1;
+	static inline constexpr auto DAT_SLOT_POS = 1;
+	static inline constexpr auto DAT_ITEM_FLAGS = 0;
+	static inline constexpr auto DAT_ITEM_WEIGHT = 7;
+	static inline constexpr auto DAT_FIRE_VOLUME = BIG_EXPLOSION_VOLUME;
+	static inline constexpr auto DAT_FIRE_FLASH = NORMAL_GUN_FLASH;
+	static inline constexpr auto DAT_EFF_SHOT_DIST = 4096.f;
+	static inline constexpr auto DAT_PENETRATION = 2;
+	static inline constexpr auto DAT_BULLET_TYPE = BULLET_PLAYER_50AE;
+	static inline constexpr auto DAT_RANGE_MODIFIER = 0.81f;
+	static inline constexpr auto DAT_FIRE_INTERVAL = 0.3f - 0.075f;
+
+	static inline constexpr float EXPR_DAMAGE() noexcept {
+		return 54.f;
+	}
+	inline float EXPR_ACCY() const noexcept {
+		return m_flAccuracy - (0.4f - (gpGlobals->time - m_flLastFire)) * 0.35f;
+	}
+	inline float EXPR_SPREAD() const noexcept
+	{
+		if (!(m_pPlayer->pev->flags & FL_ONGROUND))
+			return 1.5f * (1.f - m_flAccuracy);
+		else if (m_pPlayer->pev->velocity.LengthSquared2D() > 0)
+			return 0.25f * (1.f - m_flAccuracy);
+		else if (m_pPlayer->pev->flags & FL_DUCKING)
+			return 0.115f * (1.f - m_flAccuracy);
+		else
+			return 0.13f * (1.f - m_flAccuracy);
+	}
+	static inline auto EXPR_FIRING_SND() noexcept -> span<string const> {
+		static const auto rgszSounds{ CollectSounds("weapons/deagle-") };
+		return rgszSounds;
+	}
+	inline void EFFC_RECOIL() const noexcept {
+		m_pPlayer->pev->punchangle.pitch -= 2;
+	};
+	inline void EFFC_SND_FIRING() const noexcept {
+		g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON,
+			UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(),
+			VOL_NORM, 0.6f, SND_FL_NONE, UTIL_Random(94, 94 + 0xf)
+		);
+	}
+
+	static inline constexpr auto FLAG_IS_PISTOL = true;
+	static inline constexpr auto FLAG_CAN_HAVE_SHIELD = true;
+};
+
+template void LINK_ENTITY_TO_CLASS<CPistolDeagle>(entvars_t* pev) noexcept;
+
+struct CPistolFN57 : CBasePistol<CPistolFN57>
+{
+	static inline constexpr WeaponIdType PROTOTYPE_ID = WEAPON_FIVESEVEN;
+
+	static inline constexpr char MODEL_V[] = "models/v_fiveseven.mdl";
+	static inline constexpr char MODEL_V_SHIELD[] = "models/shield/v_shield_fiveseven.mdl";
+	static inline constexpr char MODEL_W[] = "models/w_fiveseven.mdl";
+	static inline constexpr char MODEL_P[] = "models/p_fiveseven.mdl";
+	static inline constexpr char MODEL_P_SHIELD[] = "models/shield/p_shield_fiveseven.mdl";
+	static inline constexpr char MODEL_SHELL[] = "models/pshell.mdl";
+
+	static inline constexpr char ANIM_3RD_PERSON[] = "onehanded";
+
+	struct AnimDat_Idle final {
+		static inline constexpr std::array KEYWORD{ "idle"sv, };
+		static inline constexpr auto EXCLUSION = std::array{ "shield"sv, };
+	};
+	struct AnimDat_ShieldedIdle final {
+		static inline constexpr std::array KEYWORD{ "idle"sv, };
+		static inline constexpr std::array KEYWORD_SHIELD{ "shield"sv, };
+	};
+	struct AnimDat_Shoot final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr auto EXCLUSION = std::array{ "last"sv, "empty"sv, };
+	};
+	struct AnimDat_ShootLast final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr auto INCLUSION = std::array{ "last"sv, "empty"sv, };
+	};
+	struct AnimDat_Draw final {
+		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, };
+	};
+	struct AnimDat_Reload final {
+		static inline constexpr std::array KEYWORD{ "reload"sv, };
+	};
+
+	static inline constexpr std::array SOUND_ALL
+	{
+		"weapons/fiveseven-1.wav",
+		"weapons/fiveseven_clipout.wav",
+		"weapons/fiveseven_clipin.wav",
+		"weapons/fiveseven_sliderelease.wav",
+		"weapons/fiveseven_slidepull.wav",
+	};
+
+	static inline constexpr char EV_FIRE[] = "events/fiveseven.sc";
+
+	static inline constexpr auto DAT_ACCY_INIT = 0.92f;
+	static inline constexpr auto DAT_ACCY_RANGE = std::pair{ 0.725f, 0.92f };
+	static inline constexpr auto DAT_MAX_CLIP = 20;
+	static inline constexpr auto DAT_MAX_SPEED = 250.f;
+	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
+	static inline constexpr char DAT_AMMO_NAME[] = "57mm";
+	static inline constexpr auto DAT_AMMO_MAX = 100;
+	static inline constexpr char DAT_HUD_NAME[] = "weapon_fiveseven";
+	static inline constexpr auto DAT_SLOT = 1;
+	static inline constexpr auto DAT_SLOT_POS = 6;
+	static inline constexpr auto DAT_ITEM_FLAGS = 0;
+	static inline constexpr auto DAT_ITEM_WEIGHT = 5;
+	static inline constexpr auto DAT_FIRE_VOLUME = BIG_EXPLOSION_VOLUME;
+	static inline constexpr auto DAT_FIRE_FLASH = DIM_GUN_FLASH;
+	static inline constexpr auto DAT_EFF_SHOT_DIST = 4096.f;
+	static inline constexpr auto DAT_PENETRATION = 1;
+	static inline constexpr auto DAT_BULLET_TYPE = BULLET_PLAYER_57MM;
+	static inline constexpr auto DAT_RANGE_MODIFIER = 0.885f;
+	static inline constexpr auto DAT_FIRE_INTERVAL = 0.2f - 0.05f;
+
+	static inline constexpr float EXPR_DAMAGE() noexcept {
+		return 20.f;
+	}
+	inline float EXPR_ACCY() const noexcept {
+		return m_flAccuracy - (0.275f - (gpGlobals->time - m_flLastFire)) * 0.25f;
+	}
+	inline float EXPR_SPREAD() const noexcept
+	{
+		if (!(m_pPlayer->pev->flags & FL_ONGROUND))
+			return 1.5f * (1.f - m_flAccuracy);
+		else if (m_pPlayer->pev->velocity.LengthSquared2D() > 0)
+			return 0.255f * (1.f - m_flAccuracy);
+		else if (m_pPlayer->pev->flags & FL_DUCKING)
+			return 0.075f * (1.f - m_flAccuracy);
+		else
+			return 0.15f * (1.f - m_flAccuracy);
+	}
+	static inline auto EXPR_FIRING_SND() noexcept -> span<string const> {
+		static const auto rgszSounds{ CollectSounds("weapons/fiveseven-") };
+		return rgszSounds;
+	}
+	inline void EFFC_RECOIL() const noexcept {
+		m_pPlayer->pev->punchangle.pitch -= 2;
+	};
+	inline void EFFC_SND_FIRING() const noexcept {
+		g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON,
+			UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(),
+			VOL_NORM, ATTN_NORM, SND_FL_NONE, UTIL_Random(94, 94 + 0xf)
+		);
+	}
+
+	static inline constexpr auto FLAG_IS_PISTOL = true;
+	static inline constexpr auto FLAG_CAN_HAVE_SHIELD = true;
+};
+
+template void LINK_ENTITY_TO_CLASS<CPistolFN57>(entvars_t* pev) noexcept;
+
+struct CPistolBeretta : CBasePistol<CPistolBeretta>
+{
+	static inline constexpr WeaponIdType PROTOTYPE_ID = WEAPON_ELITE;
+
+	static inline constexpr char MODEL_V[] = "models/v_elite.mdl";
+	static inline constexpr char MODEL_W[] = "models/w_elite.mdl";
+	static inline constexpr char MODEL_P[] = "models/p_elite.mdl";
+	static inline constexpr char MODEL_SHELL[] = "models/pshell.mdl";
+
+	static inline constexpr char ANIM_3RD_PERSON[] = "dualpistols";
+
+	struct AnimDat_Idle final {
+		static inline constexpr std::array KEYWORD{ "idle"sv, };
+		static inline constexpr auto EXCLUSION = std::array{ "empty"sv, };
+	};
+	struct AnimDat_OneEmptyIdle final {
+		static inline constexpr std::array KEYWORD{ "idle"sv, };
+		static inline constexpr auto INCLUSION = std::array{ "empty"sv, };
+	};
+	struct AnimDat_Shoot final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr auto INCLUSION = std::array{ "right"sv, };
+		static inline constexpr auto EXCLUSION = std::array{ "last"sv, "empty"sv, };
+	};
+	struct AnimDat_ShootOther final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr auto INCLUSION = std::array{ "left"sv, };
+		static inline constexpr auto EXCLUSION = std::array{ "last"sv, "empty"sv, };
+	};
+	struct AnimDat_ShootOneEmpty final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr auto INCLUSION = std::array{ "leftlast"sv, "leftempty"sv, };
+	};
+	struct AnimDat_ShootLast final {
+		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
+		static inline constexpr auto INCLUSION = std::array{ "rightlast"sv, "rightempty"sv, };
+	};
+	struct AnimDat_Draw final {
+		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, };
+	};
+	struct AnimDat_Reload final {
+		static inline constexpr std::array KEYWORD{ "reload"sv, };
+	};
+
+	static inline constexpr std::array SOUND_ALL
+	{
+		"weapons/elite_fire.wav",
+		"weapons/elite_reloadstart.wav",
+		"weapons/elite_leftclipin.wav",
+		"weapons/elite_clipout.wav",
+		"weapons/elite_sliderelease.wav",
+		"weapons/elite_rightclipin.wav",
+		"weapons/elite_deploy.wav",
+	};
+
+	static inline constexpr char EV_FIRE_L[] = "events/elite_left.sc";
+	static inline constexpr char EV_FIRE_R[] = "events/elite_right.sc";
+
+	static inline constexpr auto DAT_ACCY_INIT = 0.88f;
+	static inline constexpr auto DAT_ACCY_RANGE = std::pair{ 0.725f, 0.88f };
+	static inline constexpr auto DAT_MAX_CLIP = 30;
+	static inline constexpr auto DAT_MAX_SPEED = 250.f;
+	static inline constexpr char DAT_AMMO_NAME[] = "9mm";
+	static inline constexpr auto DAT_AMMO_MAX = 120;
+	static inline constexpr char DAT_HUD_NAME[] = "weapon_elite";
+	static inline constexpr auto DAT_SLOT = 1;
+	static inline constexpr auto DAT_SLOT_POS = 5;
+	static inline constexpr auto DAT_ITEM_FLAGS = 0;
+	static inline constexpr auto DAT_ITEM_WEIGHT = 5;
+	static inline constexpr auto DAT_FIRE_VOLUME = BIG_EXPLOSION_VOLUME;
+	static inline constexpr auto DAT_FIRE_FLASH = DIM_GUN_FLASH;
+	static inline constexpr auto DAT_EFF_SHOT_DIST = 8192.f;
+	static inline constexpr auto DAT_PENETRATION = 1;
+	static inline constexpr auto DAT_BULLET_TYPE = BULLET_PLAYER_9MM;
+	static inline constexpr auto DAT_RANGE_MODIFIER = 0.885f;
+	static inline constexpr auto DAT_FIRE_INTERVAL = 0.2f - 0.078f;
+
+	static inline constexpr float EXPR_DAMAGE() noexcept {
+		return 20.f;
+	}
+	inline float EXPR_ACCY() const noexcept {
+		return m_flAccuracy - (0.325f - (gpGlobals->time - m_flLastFire)) * 0.275f;
+	}
+	inline float EXPR_SPREAD() const noexcept
+	{
+		if (!(m_pPlayer->pev->flags & FL_ONGROUND))
+			return 1.3f * (1.f - m_flAccuracy);
+		else if (m_pPlayer->pev->velocity.LengthSquared2D() > 0)
+			return 0.175f * (1.f - m_flAccuracy);
+		else if (m_pPlayer->pev->flags & FL_DUCKING)
+			return 0.08f * (1.f - m_flAccuracy);
+		else
+			return 0.1f * (1.f - m_flAccuracy);
+	}
+	static inline auto EXPR_FIRING_SND() noexcept -> span<string const> {
+		static const auto rgszSounds{ "weapons/elite_fire.wav"s };
+		return span{ &rgszSounds, 1 };
+	}
+	inline void EFFC_RECOIL() const noexcept {
+		m_pPlayer->pev->punchangle.pitch -= 2;
+	};
+	inline void EFFC_SND_FIRING() const noexcept {
+		g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON,
+			UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(),
+			VOL_NORM, ATTN_NORM, SND_FL_NONE, UTIL_Random(94, 94 + 0xf)
+		);
+	}
+
+	static inline constexpr auto FLAG_IS_PISTOL = true;
+	static inline constexpr auto FLAG_DUAL_WIELDING = true;
+};
+
+template void LINK_ENTITY_TO_CLASS<CPistolBeretta>(entvars_t* pev) noexcept;
