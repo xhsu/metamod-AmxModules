@@ -1,3 +1,5 @@
+#include <assert.h>
+
 #ifdef __INTELLISENSE__
 import std;
 #else
@@ -144,10 +146,75 @@ inline Resource::Add SFX_RICO_METAL[] =
 // Effect.cpp
 extern edict_t* CreateWallPuff(TraceResult const& tr) noexcept;
 extern edict_t* CreateSpark3D(TraceResult const& tr) noexcept;
+extern edict_t* CreateWaterSplash3D(Vector const& vecOrigin) noexcept;
 //
 
-static inline Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTextureType, float flDamage) noexcept
+static Task VFX_WaterSplash(Vector vecSrc, Vector vecEnd) noexcept
 {
+	// Assume that player doesn't shooting from water,
+	// not shooting through water
+	// and not that close to the water.
+
+	assert(g_engfuncs.pfnPointContents(vecEnd) == CONTENTS_WATER);
+
+	auto vecDir = vecEnd - vecSrc;
+	auto iCounter = 0z;
+
+	for (;
+		g_engfuncs.pfnPointContents(vecSrc) != g_engfuncs.pfnPointContents(vecEnd);
+		co_await TaskScheduler::NextFrame::Rank[0])
+	{
+		vecSrc += vecDir * 0.5;
+		vecDir *= 0.5;
+
+		if (g_engfuncs.pfnPointContents(vecSrc) == CONTENTS_WATER)
+			break;
+
+		++iCounter;
+	}
+
+	auto iCounter2 = 0z;
+
+	for (vecEnd = vecSrc - vecDir;	// In the first iteration we are certain that we should go back, and vecSrc is under water.
+		vecDir.LengthSquared() > 4.0 * 4.0;
+		co_await TaskScheduler::NextFrame::Rank[0], ++iCounter2)
+	{
+		vecDir = (vecEnd - vecSrc) * 0.5;
+		auto const vecMid = vecSrc + vecDir;
+
+		auto const C_SRC = g_engfuncs.pfnPointContents(vecSrc);
+		auto const C_MID = g_engfuncs.pfnPointContents(vecMid);
+		auto const C_END = g_engfuncs.pfnPointContents(vecEnd);
+
+		if (C_SRC == C_MID && C_MID == C_END)
+			co_return;	// BAD
+
+		if (C_SRC == C_MID && C_MID != C_END)
+		{
+			vecSrc = vecMid;
+		}
+		else if (C_SRC != C_MID && C_MID == C_END)
+		{
+			vecEnd = vecMid;
+		}
+		else
+			co_return;	// BAD
+	}
+
+	CreateWaterSplash3D(
+		g_engfuncs.pfnPointContents(vecSrc) == CONTENTS_WATER ?
+		vecSrc : vecEnd
+	);
+
+	co_return;
+}
+
+static Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTextureType, float flDamage) noexcept
+{
+	// tr.fInWater doesn't work.
+	if (g_engfuncs.pfnPointContents(tr.vecEndPos) == CONTENTS_WATER)
+		TaskScheduler::Enroll(VFX_WaterSplash(vecSrc, tr.vecEndPos));
+
 	co_await TaskScheduler::NextFrame::Rank[0];
 
 	UTIL_Decal(tr.pHit, tr.vecEndPos, UTIL_GetRandomOne(Decal::GUNSHOT));
@@ -188,7 +255,7 @@ static inline Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTexture
 			GIBS_WOOD,
 			(uint8_t)std::clamp(std::lroundf(flDamage / 4.f), 2l, 16l),
 			UTIL_Random(6.f, 9.f),
-			1 << 3	/* wood sfx */
+			BREAK_WOOD
 		);
 
 		CreateWallPuff(tr);
@@ -204,7 +271,7 @@ static inline Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTexture
 			GIBS_CONCRETE,
 			(uint8_t)std::clamp(std::lroundf(flDamage / 4.f), 2l, 16l),
 			UTIL_Random(6.f, 9.f),
-			0
+			BREAK_NONE
 		);
 		// 1 << 0 - glass
 		// 1 << 1 - metal
@@ -226,7 +293,7 @@ static inline Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTexture
 			GIBS_GLASS,
 			(uint8_t)std::clamp(std::lroundf(flDamage / 4.f), 2l, 16l),
 			UTIL_Random(6.f, 9.f),
-			1 << 0	/* glass sfx */
+			BREAK_GLASS | BREAK_TRANS
 		);
 
 		CreateWallPuff(tr);
@@ -240,7 +307,7 @@ static inline Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTexture
 			GIBS_FLORA,
 			(uint8_t)std::clamp(std::lroundf(flDamage / 4.f), 2l, 16l),
 			UTIL_Random(6.f, 9.f),
-			0
+			BREAK_NONE
 		);
 		break;
 
@@ -407,7 +474,7 @@ static inline Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTexture
 Vector2D CS_FireBullets3(
 	CBasePlayer* pAttacker, CBasePlayerItem* pInflictor,
 	Vector const& vecSrcOfs, float flSpread, float flDistance,
-	int iPenetration, int iBulletType, float flDamage, float flRangeModifier) noexcept
+	int iPenetration, EBulletTypes iBulletType, float flDamage, float flRangeModifier) noexcept
 {
 	[[maybe_unused]] auto const iOriginalPenetration{ iPenetration };
 	float flPenetrationPower{};

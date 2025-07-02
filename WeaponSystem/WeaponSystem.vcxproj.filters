@@ -168,6 +168,9 @@
     <ClCompile Include="Round.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
+    <ClCompile Include="Buy.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp">

@@ -118,6 +118,7 @@
     <ClCompile Include="..\Common\WinAPI.cpp" />
     <ClCompile Include="..\Common\WinAPI.ixx" />
     <ClCompile Include="Application.ixx" />
+    <ClCompile Include="Buy.cpp" />
     <ClCompile Include="CsWpn.cpp" />
     <ClCompile Include="Decal.ixx" />
     <ClCompile Include="DllFunc.cpp" />

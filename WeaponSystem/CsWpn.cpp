@@ -68,7 +68,7 @@ extern edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol, bool bShoot
 extern Vector2D CS_FireBullets3(
 	CBasePlayer* pAttacker, CBasePlayerItem* pInflictor,
 	Vector const& vecSrcOfs, float flSpread, float flDistance,
-	int iPenetration, int iBulletType, float flDamage, float flRangeModifier) noexcept;
+	int iPenetration, EBulletTypes iBulletType, float flDamage, float flRangeModifier) noexcept;
 
 [[nodiscard]] static auto GetAnimsFromKeywords(
 	string_view szModel, span<string_view const> rgszKeywords,
@@ -267,7 +267,7 @@ struct CBasePistol : CPrefabWeapon
 		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
 			m_iWeaponState &= ~WPNSTATE_SHIELD_DRAWN;
 
-		m_iDefaultAmmo = T::DAT_MAX_CLIP;
+		m_iClip = T::DAT_MAX_CLIP;	// Changed from m_iDefaultAmmo, as I changed the meaning of that member.
 		m_fMaxSpeed = T::DAT_MAX_SPEED;	// From deagle
 		m_flAccuracy = T::DAT_ACCY_INIT;
 
@@ -420,6 +420,11 @@ struct CBasePistol : CPrefabWeapon
 
 	Task Task_ItemPostFrame() noexcept
 	{
+		static constexpr bool bHasSecondaryAttack =
+			requires { T::FLAG_CAN_HAVE_SHIELD; }
+			|| requires { T::m_bBurstFire; }
+			|| requires { T::FLAG_SECATK_SILENCER; };
+
 		for (;; co_await TaskScheduler::NextFrame::Rank[0])
 		{
 			if (!(m_pPlayer->pev->button & IN_ATTACK))
@@ -442,7 +447,7 @@ struct CBasePistol : CPrefabWeapon
 				}
 			}
 
-			if (HasSecondaryAttack() && (m_pPlayer->pev->button & IN_ATTACK2)
+			if (bHasSecondaryAttack && (m_pPlayer->pev->button & IN_ATTACK2)
 				&& !m_Scheduler.Exist(TASK_ALL_BEHAVIORS)
 				&& !m_pPlayer->m_bIsDefusing // In-line: I think it's fine to block secondary attack, when defusing. It's better then blocking speed resets in weapons.
 				)
@@ -1108,8 +1113,6 @@ struct CBasePistol : CPrefabWeapon
 
 public: // Materializing weapon, like CWeaponBox
 
-	int16_t m_iWeaponBoxStoredAmmo{};
-
 	void Drop() noexcept override
 	{
 		// From CBasePlayer::DropPlayerItem
@@ -1224,7 +1227,7 @@ public: // Materializing weapon, like CWeaponBox
 			{
 				// From pWeaponBox->PackAmmo
 
-				m_iWeaponBoxStoredAmmo += m_pPlayer->m_rgAmmo[iAmmoIndex];
+				m_iDefaultAmmo += m_pPlayer->m_rgAmmo[iAmmoIndex];
 
 				m_pPlayer->m_rgAmmo[iAmmoIndex] = 0;
 			}
@@ -1278,10 +1281,26 @@ public: // Materializing weapon, like CWeaponBox
 	}
 #endif
 
-	qboolean AddDuplicate(CBasePlayerItem* pItem) noexcept override { return true; }
-	qboolean ExtractAmmo(CBasePlayerWeapon* pWeapon) noexcept override { return true; }
-	qboolean ExtractClipAmmo(CBasePlayerWeapon* pWeapon) noexcept override { return true; }
-	qboolean AddWeapon(void) noexcept override { return true; }
+	// Keep this one down. Or it will delete the dropped weapon like in HL1.
+	qboolean AddDuplicate(CBasePlayerItem* pItem) noexcept final { return false; }
+	qboolean ExtractAmmo(CBasePlayerWeapon*) noexcept final { return true; }
+	qboolean ExtractClipAmmo(CBasePlayerWeapon* pWeapon) noexcept final { return true; }
+
+	// Add the carrying ammo to player. Assume m_pPlayer is ready.
+	qboolean AddWeapon(void) noexcept final
+	{
+		if (CRTP()->m_iDefaultAmmo > 0)
+		{
+			if (m_pPlayer->GiveAmmo(CRTP()->m_iDefaultAmmo, (char*)CRTP()->DAT_AMMO_NAME, CRTP()->DAT_AMMO_MAX))
+			{
+				CRTP()->m_iDefaultAmmo = 0;
+				// Keep quiet now, or it will muff the sound for gun pickup.
+				//g_engfuncs.pfnEmitSound(CRTP()->edict(), CHAN_ITEM, "items/9mmclip1.wav", VOL_NORM, ATTN_NORM, SND_FL_NONE, PITCH_NORM);
+			}
+		}
+
+		return true;
+	}
 
 	void Touch_Materialized(CBaseEntity* pOther) noexcept
 	{
@@ -1334,15 +1353,8 @@ public: // Materializing weapon, like CWeaponBox
 				this->AttachToPlayer(pPlayer);
 				g_engfuncs.pfnEmitSound(pPlayer->edict(), CHAN_ITEM, "items/gunpickup2.wav", VOL_NORM, ATTN_NORM, SND_FL_NONE, PITCH_NORM);
 
-				if (m_iWeaponBoxStoredAmmo > 0)
-				{
-					pPlayer->GiveAmmo(m_iWeaponBoxStoredAmmo, (char*)T::DAT_AMMO_NAME, T::DAT_AMMO_MAX);
-					m_iWeaponBoxStoredAmmo = 0;
-				}
-
 				bPickedUp = true;
 			}
-
 		}
 		else if constexpr (T::DAT_SLOT == 3)
 		{

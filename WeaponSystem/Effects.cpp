@@ -208,7 +208,7 @@ edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol, bool bShootingLeft
 struct CSpark3D : Prefab_t
 {
 	static inline constexpr char CLASSNAME[] = "env_spark_3d";
-	static inline Resource::Add SPARK_MODEL{ "models/AirSupport/m_flash1.mdl" };
+	static inline Resource::Add SPARK_MODEL{ "models/WSIV/m_flash1.mdl" };
 	static inline constexpr auto HOLD_TIME = 0.07f;
 
 	void Spawn() noexcept override
@@ -220,7 +220,7 @@ struct CSpark3D : Prefab_t
 		pev->renderfx = kRenderFxNone;
 		pev->renderamt = UTIL_Random(192.f, 255.f);
 
-		auto const iValue = UTIL_Random(0, 5);
+		auto const iValue = UTIL_Random(0, 4);
 		switch (iValue)
 		{
 		case 0:
@@ -233,10 +233,6 @@ struct CSpark3D : Prefab_t
 
 		case 4:
 			pev->body = 1;
-			break;
-
-		case 5:
-			pev->body = 2;
 			break;
 
 		default:
@@ -254,4 +250,61 @@ struct CSpark3D : Prefab_t
 edict_t* CreateSpark3D(TraceResult const& tr) noexcept
 {
 	return Prefab_t::Create<CSpark3D>(tr.vecEndPos, (-tr.vecPlaneNormal).VectorAngles())->edict();
+}
+
+struct CWaterSplash : Prefab_t
+{
+	static inline constexpr char CLASSNAME[] = "env_water_splash_3d";
+	static inline Resource::Add SPLASH_MODEL{ "models/WSIV/m_spark2.mdl" };
+	static inline constexpr float FPS = 30;
+
+	void Spawn() noexcept override
+	{
+		pev->solid = SOLID_NOT;
+		pev->movetype = MOVETYPE_NONE;
+		pev->gravity = 0;
+		pev->rendermode = kRenderTransAdd;
+		pev->renderfx = kRenderFxNone;
+		pev->renderamt = UTIL_Random(192.f, 255.f);
+
+		auto const iValue = UTIL_Random(0, 4);
+		switch (iValue)
+		{
+		case 0:
+		case 1:
+		case 2:
+		case 3:
+			pev->body = 0;
+			pev->skin = iValue;
+			break;
+
+		case 4:
+			pev->body = 1;
+			break;
+
+		default:
+			std::unreachable();
+		}
+
+		g_engfuncs.pfnSetModel(edict(), SPLASH_MODEL);
+		g_engfuncs.pfnSetOrigin(edict(), pev->origin);
+		g_engfuncs.pfnSetSize(edict(), Vector::Zero(), Vector::Zero());
+
+		m_Scheduler.Enroll(Task_SkinAnimation(), TASK_TIME_OUT | TASK_ANIMATION);
+	}
+
+	Task Task_SkinAnimation() noexcept
+	{
+		for (int i = 0; i < 18; co_await (1.f / FPS), ++i)
+		{
+			pev->skin = i;
+		}
+
+		pev->flags |= FL_KILLME;
+	}
+};
+
+edict_t* CreateWaterSplash3D(Vector const& vecOrigin) noexcept
+{
+	return Prefab_t::Create<CWaterSplash>(vecOrigin, Angles::Upwards())->edict();
 }
