@@ -171,6 +171,9 @@
     <ClCompile Include="Buy.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
+    <ClCompile Include="Ammo.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp">

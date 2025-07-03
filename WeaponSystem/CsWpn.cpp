@@ -25,6 +25,7 @@ import Uranus;
 import WinAPI;
 import ZBot;
 
+import Ammo;
 import WpnIdAllocator;
 
 using std::strcpy;
@@ -68,7 +69,7 @@ extern edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol, bool bShoot
 extern Vector2D CS_FireBullets3(
 	CBasePlayer* pAttacker, CBasePlayerItem* pInflictor,
 	Vector const& vecSrcOfs, float flSpread, float flDistance,
-	int iPenetration, EBulletTypes iBulletType, float flDamage, float flRangeModifier) noexcept;
+	int iPenetration, CAmmoInfo const* pAmmoInfo, float flDamage, float flRangeModifier) noexcept;
 
 [[nodiscard]] static auto GetAnimsFromKeywords(
 	string_view szModel, span<string_view const> rgszKeywords,
@@ -246,6 +247,7 @@ template <typename T>
 struct CBasePistol : CPrefabWeapon
 {
 	uint16_t m_usFireEv{}, m_usFireEv2{};
+	CAmmoInfo const* m_pAmmoInfo{};
 
 	qboolean UseDecrement() noexcept override { return true; }
 	int iItemSlot() noexcept override { return T::DAT_SLOT + 1; }
@@ -270,6 +272,8 @@ struct CBasePistol : CPrefabWeapon
 		m_iClip = T::DAT_MAX_CLIP;	// Changed from m_iDefaultAmmo, as I changed the meaning of that member.
 		m_fMaxSpeed = T::DAT_MAX_SPEED;	// From deagle
 		m_flAccuracy = T::DAT_ACCY_INIT;
+
+		m_pAmmoInfo = Ammo_InfoByName(CRTP()->DAT_AMMO_NAME);
 
 		if constexpr (requires { T::m_bBurstFire; })
 		{
@@ -890,7 +894,7 @@ struct CBasePistol : CPrefabWeapon
 				m_pPlayer, this,
 				bShootingLeft ? (vecRight * -5) : (vecRight * 5),
 				CRTP()->EXPR_SPREAD(), CRTP()->DAT_EFF_SHOT_DIST, CRTP()->DAT_PENETRATION,
-				CRTP()->DAT_BULLET_TYPE, CRTP()->EXPR_DAMAGE(), CRTP()->DAT_RANGE_MODIFIER
+				CRTP()->m_pAmmoInfo, CRTP()->EXPR_DAMAGE(), CRTP()->DAT_RANGE_MODIFIER
 			);
 		}
 		else
@@ -898,7 +902,7 @@ struct CBasePistol : CPrefabWeapon
 			CS_FireBullets3(
 				m_pPlayer, this,
 				g_vecZero, CRTP()->EXPR_SPREAD(), CRTP()->DAT_EFF_SHOT_DIST, CRTP()->DAT_PENETRATION,
-				CRTP()->DAT_BULLET_TYPE, CRTP()->EXPR_DAMAGE(), CRTP()->DAT_RANGE_MODIFIER
+				CRTP()->m_pAmmoInfo, CRTP()->EXPR_DAMAGE(), CRTP()->DAT_RANGE_MODIFIER
 			);
 		}
 

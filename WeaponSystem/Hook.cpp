@@ -23,6 +23,12 @@ extern template void LINK_ENTITY_TO_CLASS<struct CPistolFN57>(entvars_t* pev) no
 extern template void LINK_ENTITY_TO_CLASS<struct CPistolBeretta>(entvars_t* pev) noexcept;
 //
 
+// Buy.cpp
+extern bool Buy_HandleBuyAliasCommands(CBasePlayer* pPlayer, std::string_view szCommand) noexcept;
+extern bool Buy_GunAmmo(CBasePlayer* pPlayer, CBasePlayerWeapon* pWeapon, bool bBlinkMoney) noexcept;
+extern bool Buy_Equipment(CBasePlayer* pPlayer, int iSlot) noexcept;
+//
+
 
 PFN_ENTITYINIT __cdecl OrpheuF_GetDispatch(char const* pszClassName) noexcept
 {
@@ -80,11 +86,25 @@ void __cdecl OrpheuF_packPlayerItem(CBasePlayer* pPlayer, CBasePlayerItem* pItem
 	return HookInfo::packPlayerItem(pPlayer, pItem, packAmmo);
 }
 
+bool __cdecl OrpheuF_BuyGunAmmo(CBasePlayer* player, CBasePlayerItem* weapon, bool bBlinkMoney) noexcept
+{
+	return Buy_GunAmmo(
+		player,
+#ifdef _DEBUG
+		dynamic_cast<CBasePlayerWeapon*>(weapon),
+#else
+		static_cast<CBasePlayerWeapon*>(weapon),
+#endif
+		bBlinkMoney
+	);
+}
+
 void DeployInlineHooks() noexcept
 {
 	HookInfo::GetDispatch.ApplyOn(HW::GetDispatch::pfn);
 	HookInfo::DropPlayerItem.ApplyOn(Uranus::BasePlayer::DropPlayerItem::pfn);
 	HookInfo::packPlayerItem.ApplyOn(Uranus::packPlayerItem::pfn);
+	HookInfo::BuyGunAmmo.ApplyOn(Uranus::BuyGunAmmo::pfn);
 }
 
 void RestoreInlineHooks() noexcept
@@ -92,4 +112,5 @@ void RestoreInlineHooks() noexcept
 	HookInfo::GetDispatch.UndoPatch();
 	HookInfo::DropPlayerItem.UndoPatch();
 	HookInfo::packPlayerItem.UndoPatch();
+	HookInfo::BuyGunAmmo.UndoPatch();
 }

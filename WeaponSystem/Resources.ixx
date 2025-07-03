@@ -12,17 +12,17 @@ export module Resources;
 import std;
 import hlsdk;
 
+import FileSystem;
 import Models;
 import Sprite;
 import Wave;
 
+using std::map;
 using std::move_only_function;
 using std::set;
 using std::string;
 using std::string_view;
-using std::unordered_set;
 using std::vector;
-using std::unordered_map;
 
 using std::int32_t;
 
@@ -51,6 +51,24 @@ struct CaseIgnoredCmp final
 
 static_assert(CaseIgnoredCmp{}("models/matoilet.mdl", "Models/Matoilet.MDL"));
 
+struct RES_INTERNAL_sv_iless_t final
+{
+	struct nocase_compare
+	{
+		static bool operator()(char c1, char c2) noexcept
+		{
+			return std::tolower(c1) < std::tolower(c2);
+		}
+	};
+
+	static bool operator()(std::string_view const& lhs, std::string_view const& rhs) noexcept
+	{
+		return std::ranges::lexicographical_compare(lhs, rhs, nocase_compare{});
+	}
+
+	using is_transparent = int;
+};
+
 namespace Resource
 {
 	struct Manager final
@@ -62,9 +80,34 @@ namespace Resource
 		}
 
 		vector<move_only_function<void() noexcept>> m_Initializers{};
-		unordered_map<string_view, int32_t, std::hash<string_view>, CaseIgnoredCmp> m_Record{};
+		map<string_view, int32_t, RES_INTERNAL_sv_iless_t> m_Record{};
+		map<string, TranscriptedStudio, RES_INTERNAL_sv_iless_t> m_TranscriptedStudio{};
 		//unordered_set<string_view, std::hash<string_view>, CaseIgnoredCmp> m_Record{};
 	};
+
+	export bool Transcript(string_view szRelativePath) noexcept
+	{
+		auto buf = FileSystem::LoadBinaryFile(szRelativePath.data());
+		auto&& [iter, bNewEntry]
+			= Manager::Get().m_TranscriptedStudio.try_emplace(
+				string{ szRelativePath },
+				buf.get()
+			);
+
+		[[maybe_unused]] auto& StudioInfo = iter->second;
+
+		return bNewEntry;
+	}
+
+	export [[nodiscard]] auto GetStudioTranscription(string_view szRelativePath) noexcept -> TranscriptedStudio const*
+	{
+		auto& Lib = Manager::Get().m_TranscriptedStudio;
+
+		if (auto const it = Lib.find(szRelativePath); it != Lib.cend())
+			return std::addressof(it->second);
+
+		return nullptr;
+	}
 
 	export inline void Precache() noexcept
 	{
@@ -100,7 +143,10 @@ namespace Resource
 			if (std::ranges::ends_with(rgcName, ".mdl", CaseIgnoredCmp{}))
 			{
 				Manager::Get().m_Initializers.emplace_back(
-					[&]() noexcept { m_Index = Manager::Get().m_Record[m_pszName] = g_engfuncs.pfnPrecacheModel(m_pszName); }
+					[&]() noexcept {
+						m_Index = Manager::Get().m_Record[m_pszName] = g_engfuncs.pfnPrecacheModel(m_pszName);
+						Transcript(m_pszName);
+					}
 				);
 			}
 			else if (std::ranges::ends_with(rgcName, ".spr", CaseIgnoredCmp{}))
@@ -143,5 +189,6 @@ namespace Resource
 
 		inline operator int32_t() const noexcept { return m_Index; }
 		inline operator const char* () const noexcept { return m_pszName; }
+		inline operator string_view () const noexcept { return m_pszName; }
 	};
 }

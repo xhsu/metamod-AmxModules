@@ -249,14 +249,17 @@ struct CSpark3D : Prefab_t
 
 edict_t* CreateSpark3D(TraceResult const& tr) noexcept
 {
-	return Prefab_t::Create<CSpark3D>(tr.vecEndPos, (-tr.vecPlaneNormal).VectorAngles())->edict();
+	return Prefab_t::Create<CSpark3D>(tr.vecEndPos, tr.vecPlaneNormal.VectorAngles())->edict();
 }
 
 struct CWaterSplash : Prefab_t
 {
 	static inline constexpr char CLASSNAME[] = "env_water_splash_3d";
 	static inline Resource::Add SPLASH_MODEL{ "models/WSIV/m_spark2.mdl" };
-	static inline constexpr float FPS = 30;
+	static inline constexpr float FPS = 60;
+
+	int m_iSkinAnimFrames{};
+	int m_iBodyPartAnimFrames{ 1 };
 
 	void Spawn() noexcept override
 	{
@@ -267,38 +270,41 @@ struct CWaterSplash : Prefab_t
 		pev->renderfx = kRenderFxNone;
 		pev->renderamt = UTIL_Random(192.f, 255.f);
 
-		auto const iValue = UTIL_Random(0, 4);
-		switch (iValue)
-		{
-		case 0:
-		case 1:
-		case 2:
-		case 3:
-			pev->body = 0;
-			pev->skin = iValue;
-			break;
-
-		case 4:
-			pev->body = 1;
-			break;
-
-		default:
-			std::unreachable();
-		}
-
 		g_engfuncs.pfnSetModel(edict(), SPLASH_MODEL);
 		g_engfuncs.pfnSetOrigin(edict(), pev->origin);
 		g_engfuncs.pfnSetSize(edict(), Vector::Zero(), Vector::Zero());
 
+		auto const pStudioInfo = Resource::GetStudioTranscription(SPLASH_MODEL);
+		m_iSkinAnimFrames = std::ssize(pStudioInfo->m_Skins);
+		for (auto&& BodyPart : pStudioInfo->m_Parts)
+			m_iBodyPartAnimFrames *= BodyPart.m_SubModels.size();
+
 		m_Scheduler.Enroll(Task_SkinAnimation(), TASK_TIME_OUT | TASK_ANIMATION);
+		m_Scheduler.Enroll(Task_BodyPartAnimation(), TASK_TIME_OUT | TASK_ANIMATION);
 	}
 
 	Task Task_SkinAnimation() noexcept
 	{
-		for (int i = 0; i < 18; co_await (1.f / FPS), ++i)
+		for (int i = 0; i < m_iSkinAnimFrames; co_await (1.f / FPS), ++i)
 		{
 			pev->skin = i;
 		}
+
+		while (pev->body < m_iBodyPartAnimFrames)
+			co_await 0.1f;
+
+		pev->flags |= FL_KILLME;
+	}
+
+	Task Task_BodyPartAnimation() noexcept
+	{
+		for (int i = 0; i < m_iBodyPartAnimFrames; co_await (1.f / FPS), ++i)
+		{
+			pev->body = i;
+		}
+
+		while (pev->skin < m_iSkinAnimFrames)
+			co_await 0.1f;
 
 		pev->flags |= FL_KILLME;
 	}

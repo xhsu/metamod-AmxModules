@@ -18,6 +18,8 @@ import Task;
 import Uranus;
 import ZBot;
 
+import Ammo;
+
 
 //inline Resource::Add GIBS_BRICK{ "models/gibs_brick.mdl" };	// LUNA: DS using this for ... Slosh??
 inline Resource::Add GIBS_CONCRETE{ "models/gibs_concrete.mdl" };
@@ -474,11 +476,11 @@ static Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTextureType, f
 Vector2D CS_FireBullets3(
 	CBasePlayer* pAttacker, CBasePlayerItem* pInflictor,
 	Vector const& vecSrcOfs, float flSpread, float flDistance,
-	int iPenetration, EBulletTypes iBulletType, float flDamage, float flRangeModifier) noexcept
+	int iPenetration, CAmmoInfo const* pAmmoInfo, float flDamage, float flRangeModifier) noexcept
 {
 	[[maybe_unused]] auto const iOriginalPenetration{ iPenetration };
-	float flPenetrationPower{};
-	float flPenetrationDistance{};
+	float flPenetrationPower{ (float)pAmmoInfo->m_iPenetrationPower };
+	float const flPenetrationDistance{ (float)pAmmoInfo->m_iPenetrationDistance };
 	auto flCurDmg{ flDamage };
 	float flCurrentDistance{};
 	TraceResult tr{};
@@ -486,45 +488,7 @@ Vector2D CS_FireBullets3(
 	auto const [vecForward, vecRight, vecUp]
 		= (pAttacker->pev->v_angle + pAttacker->pev->punchangle).AngleVectors();
 
-	switch (iBulletType)
-	{
-	case BULLET_PLAYER_9MM:
-		flPenetrationPower = 21;
-		flPenetrationDistance = 800;
-		break;
-	case BULLET_PLAYER_45ACP:
-		flPenetrationPower = 15;
-		flPenetrationDistance = 500;
-		break;
-	case BULLET_PLAYER_50AE:
-		flPenetrationPower = 30;
-		flPenetrationDistance = 1000;
-		break;
-	case BULLET_PLAYER_762MM:
-		flPenetrationPower = 39;
-		flPenetrationDistance = 5000;
-		break;
-	case BULLET_PLAYER_556MM:
-		flPenetrationPower = 35;
-		flPenetrationDistance = 4000;
-		break;
-	case BULLET_PLAYER_338MAG:
-		flPenetrationPower = 45;
-		flPenetrationDistance = 8000;
-		break;
-	case BULLET_PLAYER_57MM:
-		flPenetrationPower = 30;
-		flPenetrationDistance = 2000;
-		break;
-	case BULLET_PLAYER_357SIG:
-		flPenetrationPower = 25;
-		flPenetrationDistance = 800;
-		break;
-	default:
-		flPenetrationPower = 0;
-		flPenetrationDistance = 0;
-		break;
-	}
+	// Penetration data was moved into struct CAmmoInfo
 
 	gpMultiDamage->type = (DMG_BULLET | DMG_NEVERGIB);
 
