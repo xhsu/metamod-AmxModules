@@ -5,6 +5,8 @@ module;
 #include <algorithm>
 #endif
 
+#include <string.h>
+
 export module Ammo;
 
 #ifdef __INTELLISENSE__
@@ -27,47 +29,41 @@ export struct CAmmoInfo
 
 	[[nodiscard]] auto operator<=>(CAmmoInfo const& rhs) const noexcept
 	{
-		for (auto&& [c1, c2] : std::views::zip(this->m_szName, rhs.m_szName))
-		{
-			if (auto const r = std::tolower(c1) <=> std::tolower(c2);
-				r != std::strong_ordering::equal)
-			{
-				return r;
-			}
-		}
-
-		return this->m_szName.length() <=> rhs.m_szName.length();
+		return _strnicmp(
+			this->m_szName.data(),
+			rhs.m_szName.data(),
+			std::max(this->m_szName.length(), rhs.m_szName.length())
+		) <=> 0;
 	}
 
 	[[nodiscard]] bool operator==(CAmmoInfo const& rhs) const noexcept
 	{
-		return std::ranges::equal(
-			this->m_szName, rhs.m_szName,
-			[](char c1, char c2) static noexcept
-			{
-				return std::tolower(c1) == std::tolower(c2);
-			}
-		);
+		return _strnicmp(
+			this->m_szName.data(),
+			rhs.m_szName.data(),
+			std::max(this->m_szName.length(), rhs.m_szName.length())
+		) == 0;
 	}
 };
 
 export [[nodiscard]] auto operator<=>(std::string_view lhs, CAmmoInfo const& rhs) noexcept
 {
-	for (auto&& [c1, c2] : std::views::zip(lhs, rhs.m_szName))
-	{
-		if (auto const r = std::tolower(c1) <=> std::tolower(c2);
-			r != std::strong_ordering::equal)
-		{
-			return r;
-		}
-	}
-
-	return lhs.length() <=> rhs.m_szName.length();
+	return _strnicmp(
+		lhs.data(),
+		rhs.m_szName.data(),
+		std::max(lhs.length(), rhs.m_szName.length())
+	) <=> 0;
 }
 
 export [[nodiscard]] auto operator<=>(CAmmoInfo const& lhs, std::string_view rhs) noexcept
 {
-	return rhs <=> lhs;
+	// Three way cmp IS NOT commutative.
+	// returning rhs <=> lhs will be a disaster.
+	return _strnicmp(
+		lhs.m_szName.data(),
+		rhs.data(),
+		std::max(lhs.m_szName.length(), rhs.length())
+	) <=> 0;
 }
 
 export inline std::set<CAmmoInfo, std::less<>> gAmmoInfo	// #UPDATE_AT_CPP23 flat_set

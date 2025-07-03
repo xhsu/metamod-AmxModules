@@ -201,7 +201,9 @@ struct CAnimationGroup final
 		static auto const REGULAR{
 			GetAnimsFromKeywords(CWeapon::MODEL_V, AnimDat::KEYWORD, std::array{ GetGenericInclusions(), }, GetGenericExclusions())
 		};
+#ifdef _DEBUG
 		assert(!REGULAR.empty()); m_pRegulars = &REGULAR;
+#endif
 		auto pResult{ UTIL_GetRandomOne(REGULAR) };
 
 		// Unsil
@@ -212,8 +214,9 @@ struct CAnimationGroup final
 			static auto const ANIM_UNSIL{
 				GetAnimsFromKeywords(CWeapon::MODEL_V, AnimDat::KEYWORD, UNSIL_INC, UNSIL_EXC)
 			};
+#ifdef _DEBUG
 			assert(!ANIM_UNSIL.empty()); m_pUnsil = &ANIM_UNSIL;
-
+#endif
 			if (!(pWeapon->m_iWeaponState & WPNSTATE_USP_SILENCED))
 				pResult = UTIL_GetRandomOne(ANIM_UNSIL);
 		}
@@ -225,8 +228,9 @@ struct CAnimationGroup final
 			static auto const ANIM_SHIELD{
 				GetAnimsFromKeywords(CWeapon::MODEL_V_SHIELD, AnimDat::KEYWORD, SHIELD_INC, SHIELD_EXC)
 			};
+#ifdef _DEBUG
 			assert(!ANIM_SHIELD.empty()); m_pShield = &ANIM_SHIELD;
-
+#endif
 			if (pWeapon->m_pPlayer->HasShield())
 				pResult = UTIL_GetRandomOne(ANIM_SHIELD);
 		}
