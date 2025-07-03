@@ -2,6 +2,7 @@ import std;
 import hlsdk;
 
 import UtlRandom;
+import UtlString;
 
 import Prefab;
 import Resources;
@@ -19,6 +20,8 @@ enum ETaskFlags : std::uint64_t
 	TASK_REFLECTING_FLAME	= (1ull << 5),
 	TASK_FOLLOWING			= (1ull << 6),
 	TASK_TIME_OUT			= (1ull << 7),
+	TASK_ANIMATING_SKIN		= (1ull << 8),
+	TASK_ANIMATING_BODY		= (1ull << 9),
 };
 
 inline Resource::Add g_WallPuffs[] =
@@ -256,10 +259,16 @@ struct CWaterSplash : Prefab_t
 {
 	static inline constexpr char CLASSNAME[] = "env_water_splash_3d";
 	static inline Resource::Add SPLASH_MODEL{ "models/WSIV/m_spark2.mdl" };
-	static inline constexpr float FPS = 60;
 
-	int m_iSkinAnimFrames{};
-	int m_iBodyPartAnimFrames{ 1 };
+	struct animating_bodypart_t
+	{
+		short m_iGroupIndex{};
+		short m_iSubModelsCount{};
+		float m_flInterval{};
+	};
+
+	static inline int m_iSkinAnimFrames{};
+	static inline std::vector<animating_bodypart_t> m_rgAnimatingBodyGroups{};
 
 	void Spawn() noexcept override
 	{
@@ -274,39 +283,62 @@ struct CWaterSplash : Prefab_t
 		g_engfuncs.pfnSetOrigin(edict(), pev->origin);
 		g_engfuncs.pfnSetSize(edict(), Vector::Zero(), Vector::Zero());
 
-		auto const pStudioInfo = Resource::GetStudioTranscription(SPLASH_MODEL);
-		m_iSkinAnimFrames = std::ssize(pStudioInfo->m_Skins);
-		for (auto&& BodyPart : pStudioInfo->m_Parts)
-			m_iBodyPartAnimFrames *= BodyPart.m_SubModels.size();
+		Precache();
 
-		m_Scheduler.Enroll(Task_SkinAnimation(), TASK_TIME_OUT | TASK_ANIMATION);
-		m_Scheduler.Enroll(Task_BodyPartAnimation(), TASK_TIME_OUT | TASK_ANIMATION);
+		m_Scheduler.Enroll(Task_SkinAnimation(60.f), TASK_TIME_OUT | TASK_ANIMATION | TASK_ANIMATING_SKIN);
+
+		for (auto&& info : m_rgAnimatingBodyGroups)
+			m_Scheduler.Enroll(Task_BodyPartAnimation(info), TASK_ANIMATION | TASK_ANIMATING_BODY);
 	}
 
-	Task Task_SkinAnimation() noexcept
+	void Precache() noexcept override
+	{
+		static bool bPrecached = false;
+		if (bPrecached) [[likely]]
+			return;
+
+		auto const pStudioInfo = Resource::GetStudioTranscription(SPLASH_MODEL);
+		m_iSkinAnimFrames = std::ssize(pStudioInfo->m_Skins);
+
+		for (int i = 0; i < std::ssize(pStudioInfo->m_Parts); ++i)
+		{
+			std::string_view const szName{ pStudioInfo->m_Parts[i].m_szName};
+			if (!szName.starts_with("animated_"))
+				continue;
+
+			auto const pos = szName.find_first_of('_');
+			if (pos == szName.npos)
+				continue;
+
+			auto const szNum = szName.substr(pos + 1);
+
+			m_rgAnimatingBodyGroups.emplace_back(
+				(short)i,
+				(short)pStudioInfo->m_Parts[i].m_SubModels.size(),
+				1.f / UTIL_StrToNum<float>(szNum)
+			);
+		}
+	}
+
+	Task Task_SkinAnimation(float FPS) noexcept
 	{
 		for (int i = 0; i < m_iSkinAnimFrames; co_await (1.f / FPS), ++i)
 		{
 			pev->skin = i;
 		}
 
-		while (pev->body < m_iBodyPartAnimFrames)
+		while (m_Scheduler.Exist(TASK_ANIMATING_BODY))
 			co_await 0.1f;
 
 		pev->flags |= FL_KILLME;
 	}
 
-	Task Task_BodyPartAnimation() noexcept
+	Task Task_BodyPartAnimation(animating_bodypart_t info) noexcept
 	{
-		for (int i = 0; i < m_iBodyPartAnimFrames; co_await (1.f / FPS), ++i)
+		for (int i = 0; i < info.m_iSubModelsCount; co_await info.m_flInterval, ++i)
 		{
-			pev->body = i;
+			SetBodygroup(pev, info.m_iGroupIndex, i);
 		}
-
-		while (pev->skin < m_iSkinAnimFrames)
-			co_await 0.1f;
-
-		pev->flags |= FL_KILLME;
 	}
 };
 
