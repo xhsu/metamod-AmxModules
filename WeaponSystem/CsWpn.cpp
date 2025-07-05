@@ -4,7 +4,7 @@
 #ifdef __INTELLISENSE__
 import std;
 #else
-import std.compat;
+import std.compat;	// #MSVC_BUG_STDCOMPAT
 #endif
 import hlsdk;
 
@@ -28,9 +28,6 @@ import ZBot;
 import Ammo;
 import WpnIdAllocator;
 
-using std::strcpy;
-using std::strcmp;	// #MSVC_BUG_STDCOMPAT
-
 using std::array;
 using std::span;
 using std::string;
@@ -44,6 +41,7 @@ enum EWeaponTaskFlags2 : std::uint64_t
 	TASK_KEY_MONITOR_LMB = (1ull << 0),
 	TASK_KEY_MONITOR_RMB = (1ull << 1),
 	TASK_KEY_MONITOR_R = (1ull << 2),
+	TASK_DEBUG_MONITOR = (1ull << 63),
 
 	TASK_ALL_MONITORS = 0b1111'1111,
 
@@ -251,7 +249,6 @@ template <typename T>
 struct CBasePistol : CPrefabWeapon
 {
 	uint16_t m_usFireEv{}, m_usFireEv2{};
-	CAmmoInfo const* m_pAmmoInfo{};
 
 	qboolean UseDecrement() noexcept override { return true; }
 	int iItemSlot() noexcept override { return T::DAT_SLOT + 1; }
@@ -277,7 +274,7 @@ struct CBasePistol : CPrefabWeapon
 		m_fMaxSpeed = T::DAT_MAX_SPEED;	// From deagle
 		m_flAccuracy = T::DAT_ACCY_INIT;
 
-		m_pAmmoInfo = Ammo_InfoByName(CRTP()->DAT_AMMO_NAME);
+		assert(CRTP()->DAT_AMMUNITION != nullptr);
 
 		if constexpr (requires { T::m_bBurstFire; })
 		{
@@ -327,6 +324,8 @@ struct CBasePistol : CPrefabWeapon
 		}
 		else
 			m_usFireEv = g_engfuncs.pfnPrecacheEvent(1, T::EV_FIRE);
+
+		CRTP()->DAT_AMMUNITION = Ammo_Register(*CRTP()->DAT_AMMUNITION);
 	}
 
 	qboolean GetItemInfo(ItemInfo* p) noexcept override
@@ -338,8 +337,8 @@ struct CBasePistol : CPrefabWeapon
 		else
 		{
 			p->pszName = STRING(pev->classname);
-			p->pszAmmo1 = T::DAT_AMMO_NAME;
-			p->iMaxAmmo1 = T::DAT_AMMO_MAX;
+			p->pszAmmo1 = CRTP()->DAT_AMMUNITION->m_szName.data();
+			p->iMaxAmmo1 = CRTP()->DAT_AMMUNITION->m_iMax;
 			p->pszAmmo2 = nullptr;
 			p->iMaxAmmo2 = -1;
 			p->iMaxClip = T::DAT_MAX_CLIP;
@@ -466,7 +465,7 @@ struct CBasePistol : CPrefabWeapon
 			else if ((m_pPlayer->pev->button & IN_ATTACK)
 				&& !m_Scheduler.Exist(TASK_ALL_BEHAVIORS))
 			{
-				if ((m_iClip == 0 && T::DAT_AMMO_NAME != nullptr)
+				if ((m_iClip == 0 && CRTP()->DAT_AMMUNITION != nullptr)
 					|| (T::DAT_MAX_CLIP == WEAPON_NOCLIP && !m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType]))
 				{
 					m_fFireOnEmpty = true;
@@ -898,7 +897,7 @@ struct CBasePistol : CPrefabWeapon
 				m_pPlayer, this,
 				bShootingLeft ? (vecRight * -5) : (vecRight * 5),
 				CRTP()->EXPR_SPREAD(), CRTP()->DAT_EFF_SHOT_DIST, CRTP()->DAT_PENETRATION,
-				CRTP()->m_pAmmoInfo, CRTP()->EXPR_DAMAGE(), CRTP()->DAT_RANGE_MODIFIER
+				CRTP()->DAT_AMMUNITION, CRTP()->EXPR_DAMAGE(), CRTP()->DAT_RANGE_MODIFIER
 			);
 		}
 		else
@@ -906,7 +905,7 @@ struct CBasePistol : CPrefabWeapon
 			CS_FireBullets3(
 				m_pPlayer, this,
 				g_vecZero, CRTP()->EXPR_SPREAD(), CRTP()->DAT_EFF_SHOT_DIST, CRTP()->DAT_PENETRATION,
-				CRTP()->m_pAmmoInfo, CRTP()->EXPR_DAMAGE(), CRTP()->DAT_RANGE_MODIFIER
+				CRTP()->DAT_AMMUNITION, CRTP()->EXPR_DAMAGE(), CRTP()->DAT_RANGE_MODIFIER
 			);
 		}
 
@@ -1144,7 +1143,7 @@ public: // Materializing weapon, like CWeaponBox
 
 		// take item off hud
 		m_pPlayer->pev->weapons &= ~(1 << m_iId);
-		PistolSlotMgr(m_pPlayer)->FreeSlot(CRTP()->DAT_HUD_NAME);
+		//TaskScheduler::Enroll(Task_FreeHudSlot(m_pPlayer, CRTP()->DAT_HUD_NAME));
 
 		// No more weapon
 		if ((m_pPlayer->pev->weapons & ~(1 << WEAPON_SUIT)) == 0)
@@ -1228,7 +1227,7 @@ public: // Materializing weapon, like CWeaponBox
 
 		if (T::DAT_ITEM_FLAGS & ITEM_FLAG_EXHAUSTIBLE || !bAnotherWeaponUsingSameAmmo)
 		{
-			auto const iAmmoIndex = m_pPlayer->GetAmmoIndex(T::DAT_AMMO_NAME);
+			auto const iAmmoIndex = m_pPlayer->GetAmmoIndex(CRTP()->DAT_AMMUNITION->m_szName.data());
 			assert(iAmmoIndex == m_iPrimaryAmmoType);
 
 			if (iAmmoIndex != -1)
@@ -1246,7 +1245,7 @@ public: // Materializing weapon, like CWeaponBox
 		this->SetTouch(&T::Touch_Materialized);
 		m_Scheduler.Enroll(Task_UnsetOwner(), TASK_MATERIALIZED_UNSET_OWNER, true);
 #ifdef _DEBUG
-		m_Scheduler.Enroll(Task_PrintInfo());
+		m_Scheduler.Enroll(Task_Materialized_PrintInfo(), TASK_DEBUG_MONITOR, true);
 #endif
 	}
 
@@ -1254,6 +1253,13 @@ public: // Materializing weapon, like CWeaponBox
 	{
 		co_await 0.5f;
 		pev->owner = nullptr;
+	}
+
+	static Task Task_FreeHudSlot(CBasePlayer* pPlayer, std::string_view szHud) noexcept
+	{
+		co_await 6.f;	// Time for weapon pickup message to fade away.
+
+		PistolSlotMgr(pPlayer)->FreeSlot(szHud);
 	}
 
 	// To Remove weapon
@@ -1265,8 +1271,8 @@ public: // Materializing weapon, like CWeaponBox
 	{
 		pev->flags |= FL_KILLME;
 
-		if (m_pPlayer)
-			PistolSlotMgr(m_pPlayer)->FreeSlot(CRTP()->DAT_HUD_NAME);
+		//if (m_pPlayer)
+		//	TaskScheduler::Enroll(Task_FreeHudSlot(m_pPlayer, CRTP()->DAT_HUD_NAME));
 	}
 
 	void Touch_Nonplayer(CBaseEntity* pOther) noexcept
@@ -1278,7 +1284,7 @@ public: // Materializing weapon, like CWeaponBox
 	}
 
 #ifdef _DEBUG
-	Task Task_PrintInfo() const noexcept
+	Task Task_Materialized_PrintInfo() const noexcept
 	{
 		for (;; co_await 0.1f)
 		{
@@ -1286,6 +1292,24 @@ public: // Materializing weapon, like CWeaponBox
 			//	std::format("SOLID: {}\n", (int)pev->solid).c_str()
 			//);
 		}
+	}
+
+	Task Task_Posessed_PrintInfo() const noexcept
+	{
+		for (;; co_await 0.1f)
+		{
+			auto const szWpnInfo = std::format(
+				"pev->weapons: {:X}\n"
+				"m_iId == {}\n"
+				"\n",
+				std::bit_cast<uint32_t>(m_pPlayer->pev->weapons),
+				m_iId
+			);
+
+			g_engfuncs.pfnServerPrint(szWpnInfo.c_str());
+		}
+
+		co_return;
 	}
 #endif
 
@@ -1299,7 +1323,11 @@ public: // Materializing weapon, like CWeaponBox
 	{
 		if (CRTP()->m_iDefaultAmmo > 0)
 		{
-			if (m_pPlayer->GiveAmmo(CRTP()->m_iDefaultAmmo, (char*)CRTP()->DAT_AMMO_NAME, CRTP()->DAT_AMMO_MAX))
+			if (m_pPlayer->GiveAmmo(
+				CRTP()->m_iDefaultAmmo,
+				(char*)CRTP()->DAT_AMMUNITION->m_szName.data(),
+				CRTP()->DAT_AMMUNITION->m_iMax) > 0
+				)
 			{
 				CRTP()->m_iDefaultAmmo = 0;
 				// Keep quiet now, or it will muff the sound for gun pickup.
@@ -1373,6 +1401,10 @@ public: // Materializing weapon, like CWeaponBox
 		if (bPickedUp)
 		{
 			// Is this already done in AttachToPlayer() ?
+
+#ifdef _DEBUG
+			m_Scheduler.Enroll(Task_Posessed_PrintInfo(), TASK_DEBUG_MONITOR, true);
+#endif
 		}
 	}
 
@@ -1382,14 +1414,14 @@ public: // Materializing weapon, like CWeaponBox
 
 		if (!m_iPrimaryAmmoType)
 		{
-			m_iPrimaryAmmoType = pPlayer->GetAmmoIndex(CRTP()->DAT_AMMO_NAME);
+			m_iPrimaryAmmoType = CRTP()->DAT_AMMUNITION->m_iAmmoId;
 			m_iSecondaryAmmoType = 0;
 		}
 
-		m_iId = PistolSlotMgr(pPlayer)->OccupySlot(
+		m_iId = PistolSlotMgr(pPlayer)->AllocSlot(
 			CRTP()->DAT_HUD_NAME,
 			CRTP()->m_iPrimaryAmmoType,
-			CRTP()->DAT_AMMO_MAX,
+			CRTP()->DAT_AMMUNITION->m_iMax,
 			CRTP()->DAT_ITEM_FLAGS
 		);
 
@@ -1436,6 +1468,12 @@ private:
 	__forceinline [[nodiscard]] T* CRTP() noexcept { static_assert(std::is_base_of_v<CBasePistol, T>); return static_cast<T*>(this); }
 	__forceinline [[nodiscard]] T const* CRTP() const noexcept { static_assert(std::is_base_of_v<CBasePistol, T>); return static_cast<T const*>(this); }
 };
+
+inline constexpr CAmmoInfo Ammo_45ACP	{ .m_szName{"45ACP"},	.m_iAmmoId{6},	.m_iMax{100},	.m_iPenetrationPower{15},	.m_iPenetrationDistance{500},	.m_flCost{25.f / 12.f}, };
+inline constexpr CAmmoInfo Ammo_57MM	{ .m_szName{"57MM"},	.m_iAmmoId{7},	.m_iMax{100},	.m_iPenetrationPower{30},	.m_iPenetrationDistance{2000},	.m_flCost{50.f / 50.f}, };
+inline constexpr CAmmoInfo Ammo_50AE	{ .m_szName{"50AE"},	.m_iAmmoId{8},	.m_iMax{35},	.m_iPenetrationPower{30},	.m_iPenetrationDistance{1000},	.m_flCost{40.f / 7.f}, };
+inline constexpr CAmmoInfo Ammo_357SIG	{ .m_szName{"357SIG"},	.m_iAmmoId{9},	.m_iMax{52},	.m_iPenetrationPower{25},	.m_iPenetrationDistance{800},	.m_flCost{50.f / 13.f}, };
+inline constexpr CAmmoInfo Ammo_9MM		{ .m_szName{"9mm"},		.m_iAmmoId{10},	.m_iMax{120},	.m_iPenetrationPower{21},	.m_iPenetrationDistance{800},	.m_flCost{20.f / 30.f}, };
 
 struct CPistolGlock : CBasePistol<CPistolGlock>
 {
@@ -1493,8 +1531,7 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 	static inline constexpr auto DAT_MAX_CLIP = 20;
 	static inline constexpr auto DAT_MAX_SPEED = 250.f;
 	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
-	static inline constexpr char DAT_AMMO_NAME[] = "9mm";
-	static inline constexpr auto DAT_AMMO_MAX = 120;
+	static inline			auto DAT_AMMUNITION = &Ammo_9MM;
 	static inline constexpr char DAT_HUD_NAME[] = "weapon_glock18";
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 2;
@@ -1638,8 +1675,7 @@ struct CPistolUSP : CBasePistol<CPistolUSP>
 	static inline constexpr auto DAT_MAX_CLIP = 12;
 	static inline constexpr auto DAT_MAX_SPEED = 250.f;
 	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
-	static inline constexpr char DAT_AMMO_NAME[] = "45acp";
-	static inline constexpr auto DAT_AMMO_MAX = 100;
+	static inline			auto DAT_AMMUNITION = &Ammo_45ACP;
 	static inline constexpr char DAT_HUD_NAME[] = "weapon_usp";
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 4;
@@ -1765,8 +1801,7 @@ struct CPistolP228 : CBasePistol<CPistolP228>
 	static inline constexpr auto DAT_MAX_CLIP = 13;
 	static inline constexpr auto DAT_MAX_SPEED = 250.f;
 	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
-	static inline constexpr char DAT_AMMO_NAME[] = "357SIG";
-	static inline constexpr auto DAT_AMMO_MAX = 52;
+	static inline			auto DAT_AMMUNITION = &Ammo_357SIG;
 	static inline constexpr char DAT_HUD_NAME[] = "weapon_p228";
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 3;
@@ -1869,8 +1904,7 @@ struct CPistolDeagle : CBasePistol<CPistolDeagle>
 	static inline constexpr auto DAT_MAX_CLIP = 7;
 	static inline constexpr auto DAT_MAX_SPEED = 250.f;
 	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
-	static inline constexpr char DAT_AMMO_NAME[] = "50AE";
-	static inline constexpr auto DAT_AMMO_MAX = 35;
+	static inline			auto DAT_AMMUNITION = &Ammo_50AE;
 	static inline constexpr char DAT_HUD_NAME[] = "weapon_deagle";
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 1;
@@ -1973,8 +2007,7 @@ struct CPistolFN57 : CBasePistol<CPistolFN57>
 	static inline constexpr auto DAT_MAX_CLIP = 20;
 	static inline constexpr auto DAT_MAX_SPEED = 250.f;
 	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
-	static inline constexpr char DAT_AMMO_NAME[] = "57mm";
-	static inline constexpr auto DAT_AMMO_MAX = 100;
+	static inline			auto DAT_AMMUNITION = &Ammo_57MM;
 	static inline constexpr char DAT_HUD_NAME[] = "weapon_fiveseven";
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 6;
@@ -2087,8 +2120,7 @@ struct CPistolBeretta : CBasePistol<CPistolBeretta>
 	static inline constexpr auto DAT_ACCY_RANGE = std::pair{ 0.725f, 0.88f };
 	static inline constexpr auto DAT_MAX_CLIP = 30;
 	static inline constexpr auto DAT_MAX_SPEED = 250.f;
-	static inline constexpr char DAT_AMMO_NAME[] = "9mm";
-	static inline constexpr auto DAT_AMMO_MAX = 120;
+	static inline			auto DAT_AMMUNITION = &Ammo_9MM;
 	static inline constexpr char DAT_HUD_NAME[] = "weapon_elite";
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 5;

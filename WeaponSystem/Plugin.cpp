@@ -3,6 +3,7 @@
 import std;
 import hlsdk;
 
+import CBase;
 import Task;
 import Uranus;
 
@@ -18,6 +19,10 @@ extern auto fw_Spawn(edict_t* pEdict) noexcept -> qboolean;
 extern void fw_UpdateClientData_Post(const edict_t* ent, qboolean sendweapons, clientdata_t* cd) noexcept;
 extern void fw_OnFreeEntPrivateData(edict_t* pEnt) noexcept;
 extern auto fw_ShouldCollide(edict_t* pentTouched, edict_t* pentOther) noexcept -> qboolean;
+//
+
+// DllFunc.Command.cpp
+extern META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept;
 //
 
 // DllFunc.PM.cpp
@@ -62,7 +67,7 @@ static int HookGameDLLExportedFn(DLL_FUNCTIONS *pFunctionTable, int *interfaceVe
 		.pfnClientDisconnect		= nullptr,
 		.pfnClientKill				= nullptr,
 		.pfnClientPutInServer		= nullptr,
-		.pfnClientCommand			= nullptr,
+		.pfnClientCommand			= [](edict_t* pPlayer) noexcept { gpMetaGlobals->mres = OnClientCommand((CBasePlayer*)pPlayer->pvPrivateData, g_engfuncs.pfnCmd_Argv(0)); },
 		.pfnClientUserInfoChanged	= nullptr,
 		.pfnServerActivate			= nullptr,
 		.pfnServerDeactivate		= nullptr,
