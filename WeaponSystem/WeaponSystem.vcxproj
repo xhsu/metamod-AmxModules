@@ -119,6 +119,7 @@
     <ClCompile Include="..\Common\WinAPI.ixx" />
     <ClCompile Include="Ammo.ixx" />
     <ClCompile Include="Application.ixx" />
+    <ClCompile Include="BPW.ixx" />
     <ClCompile Include="Buy.cpp" />
     <ClCompile Include="CsWpn.cpp" />
     <ClCompile Include="DEBUG_CLIENTHOOK.cpp" />
