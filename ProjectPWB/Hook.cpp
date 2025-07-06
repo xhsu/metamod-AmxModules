@@ -74,7 +74,7 @@ void __fastcall HamF_Item_Holster(CBasePlayerItem* pWeapon, std::uintptr_t edx, 
 
 static void ReadModelInfo(std::string_view szModel) noexcept
 {
-	auto f = FileSystem::StandardOpen(szModel.data(), "rb");
+	auto f = FileSystem::FOpen(szModel.data(), "rb");
 	if (!f)
 		return;
 

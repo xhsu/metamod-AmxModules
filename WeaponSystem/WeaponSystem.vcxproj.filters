@@ -1,0 +1,207 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="API.Engine">
+      <UniqueIdentifier>{29ddfb9b-8541-4215-a329-63475b04e98f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="API.Misc">
+      <UniqueIdentifier>{d0eeab79-3023-4304-b92c-72c339777011}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Sources">
+      <UniqueIdentifier>{e1736bcd-485e-4a97-973f-3354e95353a6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Hydrogenium">
+      <UniqueIdentifier>{4f9b1aac-9858-4a46-9966-174f3d1ee7fe}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="CSDK">
+      <UniqueIdentifier>{ff962bc1-f23b-4ea9-8f05-1c5df404ea94}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.ixx">
+      <Filter>API.Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.ixx">
+      <Filter>API.Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.util.ixx">
+      <Filter>API.Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-p\hlsdk\dlls\vector.ixx">
+      <Filter>API.Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\hlsdk.customentity.ixx">
+      <Filter>API.Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\hlsdk.decompiled.ixx">
+      <Filter>API.Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-p\hlsdk\engine\hlsdk.engine.ixx">
+      <Filter>API.Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-p\hlsdk\hlsdk.ixx">
+      <Filter>API.Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-p\metamod\metamod_api.ixx">
+      <Filter>API.Misc</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\amxxmodule_api.ixx">
+      <Filter>API.Misc</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\WinAPI.cpp">
+      <Filter>API.Misc</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\WinAPI.ixx">
+      <Filter>API.Misc</Filter>
+    </ClCompile>
+    <ClCompile Include="Plugin.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="Plugin.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Hydrogenium\UtlConcepts.ixx">
+      <Filter>Hydrogenium</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Hydrogenium\UtlHook.ixx">
+      <Filter>Hydrogenium</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Hydrogenium\UtlRandom.ixx">
+      <Filter>Hydrogenium</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\UtlString.ixx">
+      <Filter>Hydrogenium</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\CBase.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Task.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.Functions.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Platform.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Engine.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\PlayerItem\PlayerItem.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ConditionZero.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\GameRules.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Message.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\VTFH.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="Application.ixx">
+      <Filter>Hydrogenium</Filter>
+    </ClCompile>
+    <ClCompile Include="Hook.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="Hook.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="DllFunc.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="CsWpn.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Prefab.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Query.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Models.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Wave.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\FileSystem.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="FireBullets.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="Decal.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ZBot.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="Tutor.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="Resources.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Sprite.ixx">
+      <Filter>CSDK</Filter>
+    </ClCompile>
+    <ClCompile Include="Effects.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\UtlArray.ixx">
+      <Filter>Hydrogenium</Filter>
+    </ClCompile>
+    <ClCompile Include="DllFunc.PM.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="WpnIdAllocator.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="Round.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="Buy.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="Ammo.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="DllFunc.Command.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="DEBUG_CLIENTHOOK.cpp">
+      <Filter>Sources</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp">
+      <Filter>API.Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.hpp">
+      <Filter>API.Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.util.hpp">
+      <Filter>API.Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\metamod-p\hlsdk\dlls\vector.hpp">
+      <Filter>API.Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\metamod-p\hlsdk\engine\hlsdk.customentity.hpp">
+      <Filter>API.Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\metamod-p\hlsdk\engine\hlsdk.engine.hpp">
+      <Filter>API.Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\metamod-p\metamod\metamod_api.hpp">
+      <Filter>API.Misc</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

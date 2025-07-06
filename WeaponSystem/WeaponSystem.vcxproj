@@ -13,8 +13,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{ffc4a559-360e-45dc-95cb-546858a7b269}</ProjectGuid>
-    <RootNamespace>ProjectPWB</RootNamespace>
+    <ProjectGuid>{6148fb4e-b837-41c0-a1b9-0dda9a823d91}</ProjectGuid>
+    <RootNamespace>WeaponSystem</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -46,10 +46,12 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <OutDir>C:\Program Files (x86)\Steam\steamapps\common\Half-Life\czero\addons\metamod\dlls</OutDir>
+    <OutDir>C:\Program Files (x86)\Steam\steamapps\common\Half-Life\czero\addons\amxmodx\modules\</OutDir>
+    <TargetName>$(ProjectName)_amxx</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <OutDir>C:\Program Files (x86)\Steam\steamapps\common\Half-Life\czero\addons\metamod\dlls</OutDir>
+    <OutDir>C:\Program Files (x86)\Steam\steamapps\common\Half-Life\czero\addons\amxmodx\modules\</OutDir>
+    <TargetName>$(ProjectName)_amxx</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -75,8 +77,6 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>$(SolutionDir)export.def</ModuleDefinitionFile>
     </Link>
@@ -85,17 +85,24 @@
     <ClCompile Include="..\..\Hydrogenium\UtlConcepts.ixx" />
     <ClCompile Include="..\..\Hydrogenium\UtlHook.ixx" />
     <ClCompile Include="..\..\Hydrogenium\UtlRandom.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\PlayerItem\PlayerItem.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\CBase.ixx" />
-    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ConsoleVar.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ConditionZero.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Engine.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\FileSystem.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\GameRules.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Message.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Models.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Platform.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Prefab.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Query.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Sprite.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Task.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.Functions.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Uranus.ixx" />
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\VTFH.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Wave.ixx" />
+    <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ZBot.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.ixx" />
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.util.ixx" />
@@ -106,18 +113,29 @@
     <ClCompile Include="..\..\metamod-p\hlsdk\hlsdk.ixx" />
     <ClCompile Include="..\..\metamod-p\metamod\metamod_api.ixx" />
     <ClCompile Include="..\Common\amxxmodule_api.ixx" />
+    <ClCompile Include="..\Common\UtlArray.ixx" />
     <ClCompile Include="..\Common\UtlString.ixx" />
     <ClCompile Include="..\Common\WinAPI.cpp" />
     <ClCompile Include="..\Common\WinAPI.ixx" />
-    <ClCompile Include="Configs.ixx" />
-    <ClCompile Include="EngineAPI.cpp" />
-    <ClCompile Include="Entities.cpp" />
-    <ClCompile Include="Entities.ixx" />
-    <ClCompile Include="DllFunctions.cpp" />
+    <ClCompile Include="Ammo.ixx" />
+    <ClCompile Include="Application.ixx" />
+    <ClCompile Include="Buy.cpp" />
+    <ClCompile Include="CsWpn.cpp" />
+    <ClCompile Include="DEBUG_CLIENTHOOK.cpp" />
+    <ClCompile Include="Decal.ixx" />
+    <ClCompile Include="DllFunc.Command.cpp" />
+    <ClCompile Include="DllFunc.cpp" />
+    <ClCompile Include="DllFunc.PM.cpp" />
+    <ClCompile Include="Effects.cpp" />
+    <ClCompile Include="FireBullets.cpp" />
     <ClCompile Include="Hook.cpp" />
     <ClCompile Include="Hook.ixx" />
     <ClCompile Include="Plugin.cpp" />
     <ClCompile Include="Plugin.ixx" />
+    <ClCompile Include="Resources.ixx" />
+    <ClCompile Include="Round.cpp" />
+    <ClCompile Include="Tutor.cpp" />
+    <ClCompile Include="WpnIdAllocator.ixx" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp" />

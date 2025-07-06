@@ -1,6 +1,10 @@
 module;
 
 #define WIN32_LEAN_AND_MEAN
+#define NOWINRES
+#define NOSERVICE
+#define NOMCX
+#define NOIME
 #define NOMINMAX
 #include <Windows.h>
 
@@ -16,8 +20,11 @@ export inline HMODULE gSelfModuleHandle{};
 
 
 // Is the RTTI store in my module?
-export inline bool UTIL_IsLocalRtti(void* object) noexcept
+export [[nodiscard]] inline bool UTIL_IsLocalRtti(void* object) noexcept
 {
+	if (object == nullptr)
+		return false;
+
 	auto const vft = *(decltype(gSelfModuleBase)*)object;
 
 	return vft >= gSelfModuleBase && vft <= (gSelfModuleBase + gSelfModuleSize);

@@ -1,5 +1,9 @@
 
 #define WIN32_LEAN_AND_MEAN
+#define NOWINRES
+#define NOSERVICE
+#define NOMCX
+#define NOIME
 #define NOMINMAX
 #include <Windows.h>
 

@@ -4,6 +4,8 @@ export import hlsdk;
 
 // ***** AMXX stuff *****
 
+export inline constexpr auto AMXXMODULE_API_MODULE_VERSION = 20241006L;
+
 // module interface version was 1
 // 2 - added logtag to struct (amxx1.1-rc1)
 // 3 - added new tagAMX structure (amxx1.5)
