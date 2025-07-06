@@ -13,12 +13,13 @@ import Message;
 import PlayerItem;
 import Prefab;
 import Resources;
+import Sprite;
 import Task;
 import Uranus;
 import VTFH;
 import ZBot;
 
-import Sprite;
+import BPW;
 
 import Hook;
 import Plugin;
@@ -96,6 +97,7 @@ auto fw_Spawn(edict_t* pEdict) noexcept -> qboolean
 	// plugin_precache
 
 	Resource::Precache();
+	PrecacheCombinedModels();
 
 	g_bShouldPrecache = false;
 	return 0;

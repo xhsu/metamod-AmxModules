@@ -180,6 +180,9 @@
     <ClCompile Include="DEBUG_CLIENTHOOK.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
+    <ClCompile Include="BPW.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp">

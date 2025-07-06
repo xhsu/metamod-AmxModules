@@ -26,6 +26,7 @@ import WinAPI;
 import ZBot;
 
 import Ammo;
+import BPW;
 import WpnIdAllocator;
 
 using std::array;
@@ -361,6 +362,7 @@ struct CBasePistol : CPrefabWeapon
 
 		m_pPlayer->pev->viewmodel = MAKE_STRING(T::MODEL_V);
 		m_pPlayer->pev->weaponmodel = MAKE_STRING(T::MODEL_P);
+		pev->effects |= EF_NODRAW;
 
 		model_name = m_pPlayer->pev->viewmodel;
 		strcpy(m_pPlayer->m_szAnimExtention, T::ANIM_3RD_PERSON);
@@ -1116,6 +1118,7 @@ struct CBasePistol : CPrefabWeapon
 	{
 		__super::Holster(skiplocal);
 		m_Scheduler.Clear();
+		pev->effects &= ~EF_NODRAW;
 	}
 
 public: // Materializing weapon, like CWeaponBox
@@ -1255,13 +1258,6 @@ public: // Materializing weapon, like CWeaponBox
 		pev->owner = nullptr;
 	}
 
-	static Task Task_FreeHudSlot(CBasePlayer* pPlayer, std::string_view szHud) noexcept
-	{
-		co_await 6.f;	// Time for weapon pickup message to fade away.
-
-		PistolSlotMgr(pPlayer)->FreeSlot(szHud);
-	}
-
 	// To Remove weapon
 	// Ham_Weapon_RetireWeapon
 	// Ham_RemovePlayerItem
@@ -1362,7 +1358,7 @@ public: // Materializing weapon, like CWeaponBox
 		// LUNA: Extention by ReGameDLL.
 		pPlayer->OnTouchingWeapon(this);
 
-		if constexpr ((T::PROTOTYPE_ID == WEAPON_ELITE || T::DAT_SLOT == 0))
+		if constexpr (requires { T::FLAG_DUAL_WIELDING; } || T::DAT_SLOT == 0)
 		{
 			if (pPlayer->HasShield())
 				return Touch_Nonplayer(pOther);
@@ -1432,6 +1428,7 @@ public: // Materializing weapon, like CWeaponBox
 			return false;
 		}
 
+		// Deal out stored ammo.
 		if (!CRTP()->AddWeapon())
 		{
 			return false;
@@ -1445,7 +1442,32 @@ public: // Materializing weapon, like CWeaponBox
 
 	void AttachToPlayer(CBasePlayer* pPlayer) noexcept override
 	{
-		__super::AttachToPlayer(pPlayer);
+		pev->movetype = MOVETYPE_FOLLOW;
+		pev->solid = SOLID_NOT;
+		pev->aiment = pPlayer->edict();
+		pev->effects = EF_NODRAW;
+
+		if (auto const pInfo = CRTP()->GetCombinedModelInfo())
+		{
+			g_engfuncs.pfnSetModel(CRTP()->edict(), pInfo->m_szModel.data());
+			pev->body = pInfo->m_iBModelBodyVal;
+			pev->sequence = pInfo->m_iSequence;
+		}
+		else
+		{
+			// server won't send down to clients if modelindex == 0
+			pev->modelindex = 0;
+			pev->model = 0;
+		}
+
+		pev->owner = pPlayer->edict();
+
+		// Remove think - prevents futher attempts to materialize
+		// LUNA: disabled due to how task coroutine works in Prefab system.
+		//pev->nextthink = 0;
+		//SetThink(nullptr);
+
+		SetTouch(nullptr);
 		this->m_Scheduler.Delist(TASK_ALL_MATERIALIZED);
 	}
 
@@ -1464,6 +1486,24 @@ public:
 			return false;
 	}
 
+	static constexpr auto NameOfThisWeapon() noexcept -> std::string_view
+	{
+		std::string_view const szClassname = T::CLASSNAME;
+		if (auto const pos = szClassname.find_last_of('_'); pos != szClassname.npos)
+			return szClassname.substr(pos + 1);
+
+		return "";
+	}
+
+	static auto GetCombinedModelInfo() noexcept -> CCombinedModelInfo const*
+	{
+		static constexpr std::string_view szWeaponName = NameOfThisWeapon();
+		if (auto const it = gCombinedModelInfo.find(szWeaponName); it != gCombinedModelInfo.cend())
+			return std::addressof(it->second);
+
+		return nullptr;
+	}
+
 private:
 	__forceinline [[nodiscard]] T* CRTP() noexcept { static_assert(std::is_base_of_v<CBasePistol, T>); return static_cast<T*>(this); }
 	__forceinline [[nodiscard]] T const* CRTP() const noexcept { static_assert(std::is_base_of_v<CBasePistol, T>); return static_cast<T const*>(this); }
@@ -1478,6 +1518,7 @@ inline constexpr CAmmoInfo Ammo_9MM		{ .m_szName{"9mm"},		.m_iAmmoId{10},	.m_iMa
 struct CPistolGlock : CBasePistol<CPistolGlock>
 {
 	static inline constexpr WeaponIdType PROTOTYPE_ID = WEAPON_GLOCK18;
+	static inline constexpr char CLASSNAME[] = "weapon_glock18";
 
 	static inline constexpr char MODEL_V[] = "models/v_glock18.mdl";
 	static inline constexpr char MODEL_V_SHIELD[] = "models/shield/v_shield_glock18.mdl";
@@ -1532,7 +1573,7 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 	static inline constexpr auto DAT_MAX_SPEED = 250.f;
 	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
 	static inline			auto DAT_AMMUNITION = &Ammo_9MM;
-	static inline constexpr char DAT_HUD_NAME[] = "weapon_glock18";
+	static inline constexpr auto& DAT_HUD_NAME = CLASSNAME;
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 2;
 	static inline constexpr auto DAT_ITEM_FLAGS = 0;
@@ -1599,6 +1640,7 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 	//static inline constexpr auto FLAG_DUAL_WIELDING = true;	// Emulate vanilla elites.
 	//static inline constexpr auto FLAG_SECATK_SILENCER = true;	// Emulate vanilla USP
 	bool m_bBurstFire{};	// A flag to emulate vanilla g18
+	//static inline constexpr auto FLAG_USING_OLD_PW = true;	// Using w_glock.mdl, p_glock.mdl and requires "onehanded" anim.
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolGlock>(entvars_t* pev) noexcept;
@@ -1606,6 +1648,7 @@ template void LINK_ENTITY_TO_CLASS<CPistolGlock>(entvars_t* pev) noexcept;
 struct CPistolUSP : CBasePistol<CPistolUSP>
 {
 	static inline constexpr WeaponIdType PROTOTYPE_ID = WEAPON_USP;
+	static inline constexpr char CLASSNAME[] = "weapon_usp";
 
 	static inline constexpr char MODEL_V[] = "models/v_usp.mdl";
 	static inline constexpr char MODEL_V_SHIELD[] = "models/shield/v_shield_usp.mdl";
@@ -1676,7 +1719,7 @@ struct CPistolUSP : CBasePistol<CPistolUSP>
 	static inline constexpr auto DAT_MAX_SPEED = 250.f;
 	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
 	static inline			auto DAT_AMMUNITION = &Ammo_45ACP;
-	static inline constexpr char DAT_HUD_NAME[] = "weapon_usp";
+	static inline constexpr auto& DAT_HUD_NAME = CLASSNAME;
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 4;
 	static inline constexpr auto DAT_ITEM_FLAGS = 0;
@@ -1752,6 +1795,7 @@ template void LINK_ENTITY_TO_CLASS<CPistolUSP>(entvars_t* pev) noexcept;
 struct CPistolP228 : CBasePistol<CPistolP228>
 {
 	static inline constexpr WeaponIdType PROTOTYPE_ID = WEAPON_P228;
+	static inline constexpr char CLASSNAME[] = "weapon_p228";
 
 	static inline constexpr char MODEL_V[] = "models/v_p228.mdl";
 	static inline constexpr char MODEL_V_SHIELD[] = "models/shield/v_shield_p228.mdl";
@@ -1802,7 +1846,7 @@ struct CPistolP228 : CBasePistol<CPistolP228>
 	static inline constexpr auto DAT_MAX_SPEED = 250.f;
 	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
 	static inline			auto DAT_AMMUNITION = &Ammo_357SIG;
-	static inline constexpr char DAT_HUD_NAME[] = "weapon_p228";
+	static inline constexpr auto& DAT_HUD_NAME = CLASSNAME;
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 3;
 	static inline constexpr auto DAT_ITEM_FLAGS = 0;
@@ -1855,6 +1899,7 @@ template void LINK_ENTITY_TO_CLASS<CPistolP228>(entvars_t* pev) noexcept;
 struct CPistolDeagle : CBasePistol<CPistolDeagle>
 {
 	static inline constexpr WeaponIdType PROTOTYPE_ID = WEAPON_DEAGLE;
+	static inline constexpr char CLASSNAME[] = "weapon_deagle";
 
 	static inline constexpr char MODEL_V[] = "models/v_deagle.mdl";
 	static inline constexpr char MODEL_V_SHIELD[] = "models/shield/v_shield_deagle.mdl";
@@ -1905,7 +1950,7 @@ struct CPistolDeagle : CBasePistol<CPistolDeagle>
 	static inline constexpr auto DAT_MAX_SPEED = 250.f;
 	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
 	static inline			auto DAT_AMMUNITION = &Ammo_50AE;
-	static inline constexpr char DAT_HUD_NAME[] = "weapon_deagle";
+	static inline constexpr auto& DAT_HUD_NAME = CLASSNAME;
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 1;
 	static inline constexpr auto DAT_ITEM_FLAGS = 0;
@@ -1958,6 +2003,7 @@ template void LINK_ENTITY_TO_CLASS<CPistolDeagle>(entvars_t* pev) noexcept;
 struct CPistolFN57 : CBasePistol<CPistolFN57>
 {
 	static inline constexpr WeaponIdType PROTOTYPE_ID = WEAPON_FIVESEVEN;
+	static inline constexpr char CLASSNAME[] = "weapon_fiveseven";
 
 	static inline constexpr char MODEL_V[] = "models/v_fiveseven.mdl";
 	static inline constexpr char MODEL_V_SHIELD[] = "models/shield/v_shield_fiveseven.mdl";
@@ -2008,7 +2054,7 @@ struct CPistolFN57 : CBasePistol<CPistolFN57>
 	static inline constexpr auto DAT_MAX_SPEED = 250.f;
 	static inline constexpr auto DAT_SHIELDED_SPEED = 180.f;
 	static inline			auto DAT_AMMUNITION = &Ammo_57MM;
-	static inline constexpr char DAT_HUD_NAME[] = "weapon_fiveseven";
+	static inline constexpr auto& DAT_HUD_NAME = CLASSNAME;
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 6;
 	static inline constexpr auto DAT_ITEM_FLAGS = 0;
@@ -2061,6 +2107,7 @@ template void LINK_ENTITY_TO_CLASS<CPistolFN57>(entvars_t* pev) noexcept;
 struct CPistolBeretta : CBasePistol<CPistolBeretta>
 {
 	static inline constexpr WeaponIdType PROTOTYPE_ID = WEAPON_ELITE;
+	static inline constexpr char CLASSNAME[] = "weapon_elite";
 
 	static inline constexpr char MODEL_V[] = "models/v_elite.mdl";
 	static inline constexpr char MODEL_W[] = "models/w_elite.mdl";
@@ -2121,7 +2168,7 @@ struct CPistolBeretta : CBasePistol<CPistolBeretta>
 	static inline constexpr auto DAT_MAX_CLIP = 30;
 	static inline constexpr auto DAT_MAX_SPEED = 250.f;
 	static inline			auto DAT_AMMUNITION = &Ammo_9MM;
-	static inline constexpr char DAT_HUD_NAME[] = "weapon_elite";
+	static inline constexpr auto& DAT_HUD_NAME = CLASSNAME;
 	static inline constexpr auto DAT_SLOT = 1;
 	static inline constexpr auto DAT_SLOT_POS = 5;
 	static inline constexpr auto DAT_ITEM_FLAGS = 0;
@@ -2167,6 +2214,7 @@ struct CPistolBeretta : CBasePistol<CPistolBeretta>
 
 	static inline constexpr auto FLAG_IS_PISTOL = true;
 	static inline constexpr auto FLAG_DUAL_WIELDING = true;
+	static inline constexpr auto FLAG_USING_OLD_PW = true;
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolBeretta>(entvars_t* pev) noexcept;
