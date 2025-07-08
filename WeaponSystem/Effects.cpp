@@ -24,27 +24,6 @@ enum ETaskFlags : std::uint64_t
 	TASK_ANIMATING_BODY		= (1ull << 9),
 };
 
-inline Resource::Add g_WallPuffs[] =
-{
-	"sprites/wall_puff1.spr",
-	"sprites/wall_puff2.spr",
-	"sprites/wall_puff3.spr",
-	"sprites/wall_puff4.spr",
-};
-
-inline Resource::Add g_RifleSmokes[] =
-{
-	"sprites/rifle_smoke1.spr",
-	"sprites/rifle_smoke2.spr",
-	"sprites/rifle_smoke3.spr",
-};
-
-inline Resource::Add g_PistolSmokes[] =
-{
-	"sprites/pistol_smoke1.spr",
-	"sprites/pistol_smoke2.spr",
-};
-
 
 static Task Task_SpritePlayOnce(entvars_t* const pev, short const FRAME_COUNT, double const FPS) noexcept
 {
@@ -96,6 +75,13 @@ struct CWallPuff : Prefab_t
 {
 	static inline constexpr char CLASSNAME[] = "env_wall_puff";
 	static inline constexpr double FPS = 30.0;
+	static inline Resource::Add SPRITES[] =
+	{
+		"sprites/wall_puff1.spr",
+		"sprites/wall_puff2.spr",
+		"sprites/wall_puff3.spr",
+		"sprites/wall_puff4.spr",
+	};
 
 	CWallPuff(TraceResult const& tr) noexcept : m_tr{ tr } {}
 
@@ -113,7 +99,7 @@ struct CWallPuff : Prefab_t
 		pev->gravity = 0;
 		pev->scale = UTIL_Random(0.6f, 0.75f);
 
-		auto const WallPuffSpr = UTIL_GetRandomOne(g_WallPuffs);
+		auto const WallPuffSpr = UTIL_GetRandomOne(SPRITES);
 		g_engfuncs.pfnSetModel(edict(), WallPuffSpr);
 
 		Vector const vecDir = m_tr.vecPlaneNormal + CrossProduct(m_tr.vecPlaneNormal,
@@ -154,6 +140,18 @@ struct CGunSmoke : Prefab_t
 	static inline constexpr char CLASSNAME[] = "env_gun_smoke";
 	static inline constexpr double FPS = 30.0;
 
+	static inline Resource::Add RifleSmokes[] =
+	{
+		"sprites/rifle_smoke1.spr",
+		"sprites/rifle_smoke2.spr",
+		"sprites/rifle_smoke3.spr",
+	};
+
+	static inline Resource::Add PistolSmokes[] =
+	{
+		"sprites/pistol_smoke1.spr",
+		"sprites/pistol_smoke2.spr",
+	};
 
 	CGunSmoke(CBasePlayer* pPlayer, bool bIsPistol) noexcept : m_pPlayer{ pPlayer }, m_bIsPistol{ bIsPistol } {}
 
@@ -171,7 +169,7 @@ struct CGunSmoke : Prefab_t
 		pev->gravity = 0;
 		pev->scale = UTIL_Random(0.6f, 0.75f);
 
-		auto const& GunSmokeSpr = m_bIsPistol ? UTIL_GetRandomOne(g_PistolSmokes) : UTIL_GetRandomOne(g_RifleSmokes);
+		auto const& GunSmokeSpr = m_bIsPistol ? UTIL_GetRandomOne(PistolSmokes) : UTIL_GetRandomOne(RifleSmokes);
 		g_engfuncs.pfnSetModel(edict(), GunSmokeSpr);
 
 		g_engfuncs.pfnSetOrigin(edict(), pev->origin);
@@ -243,8 +241,8 @@ struct CSpark3D : Prefab_t
 		}
 
 		g_engfuncs.pfnSetModel(edict(), SPARK_MODEL);
-		g_engfuncs.pfnSetOrigin(edict(), pev->origin);
 		g_engfuncs.pfnSetSize(edict(), Vector::Zero(), Vector::Zero());
+		g_engfuncs.pfnSetOrigin(edict(), pev->origin);
 
 		m_Scheduler.Enroll(Task_Remove(pev, HOLD_TIME), TASK_TIME_OUT);
 	}
@@ -253,6 +251,22 @@ struct CSpark3D : Prefab_t
 edict_t* CreateSpark3D(TraceResult const& tr) noexcept
 {
 	return Prefab_t::Create<CSpark3D>(tr.vecEndPos, tr.vecPlaneNormal.VectorAngles())->edict();
+}
+
+static Resource::Add g_SnowSplashModel{ "models/WSIV/m_spark1.mdl" };
+
+edict_t* CreateSnowSplash(TraceResult const& tr) noexcept
+{
+	auto const pSplashEnt = Prefab_t::Create<CSpark3D>(tr.vecEndPos, tr.vecPlaneNormal.VectorAngles());
+
+	g_engfuncs.pfnSetModel(pSplashEnt->edict(), g_SnowSplashModel);
+	pSplashEnt->pev->body = UTIL_Random(0, 3);
+	pSplashEnt->pev->skin = UTIL_Random(0, 3);
+	pSplashEnt->pev->renderamt = UTIL_Random(32.f, 64.f);
+
+	pSplashEnt->m_Scheduler.Enroll(Task_Remove(pSplashEnt->pev, 0.05f), TASK_TIME_OUT, true);
+
+	return pSplashEnt->edict();
 }
 
 struct CWaterSplash : Prefab_t

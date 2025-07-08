@@ -21,11 +21,15 @@ import ZBot;
 import Ammo;
 
 
+#pragma region EFFECT_RES
+
 //inline Resource::Add GIBS_BRICK{ "models/gibs_brick.mdl" };	// LUNA: DS using this for ... Slosh??
 inline Resource::Add GIBS_CONCRETE{ "models/gibs_concrete.mdl" };
 inline Resource::Add GIBS_FLORA{ "models/gibs_flora.mdl" };
 inline Resource::Add GIBS_GLASS{ "models/gibs_glass.mdl" };
 inline Resource::Add GIBS_WOOD{ "models/gibs_wood.mdl" };
+
+inline Resource::Add SPR_Snowflake{ "sprites/effects/snowflake.spr" };
 
 inline Resource::Add SFX_HIT_METAL[] =
 {
@@ -145,9 +149,12 @@ inline Resource::Add SFX_RICO_METAL[] =
 	"debris/r_metal4.wav",
 };
 
+#pragma endregion EFFECT_RES
+
 // Effect.cpp
 extern edict_t* CreateWallPuff(TraceResult const& tr) noexcept;
 extern edict_t* CreateSpark3D(TraceResult const& tr) noexcept;
+extern edict_t* CreateSnowSplash(TraceResult const& tr) noexcept;
 extern edict_t* CreateWaterSplash3D(Vector const& vecOrigin) noexcept;
 //
 
@@ -211,8 +218,15 @@ static Task VFX_WaterSplash(Vector vecSrc, Vector vecEnd) noexcept
 	co_return;
 }
 
+namespace Effects::Surface
+{
+	extern void Snow(TraceResult const& tr) noexcept;
+}
+
 static Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTextureType, float flDamage) noexcept
 {
+	[[maybe_unused]] auto const vecDir = (tr.vecEndPos - vecSrc).Normalize();
+
 	// tr.fInWater doesn't work.
 	if (g_engfuncs.pfnPointContents(tr.vecEndPos) == CONTENTS_WATER)
 		TaskScheduler::Enroll(VFX_WaterSplash(vecSrc, tr.vecEndPos));
@@ -313,10 +327,45 @@ static Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTextureType, f
 		);
 		break;
 
+	case CHAR_TEX_SNOW:
+	{
+		Vector const vecFlakeDir {
+			(tr.vecEndPos + tr.vecPlaneNormal).Make2D() + vecDir.Make2D(),
+			tr.vecEndPos.z + tr.vecPlaneNormal.z
+		};
+
+		MsgPVS(SVC_TEMPENTITY, tr.vecEndPos);
+		WriteData(TE_SPRITETRAIL);
+		WriteData(tr.vecEndPos);
+
+		if (std::fabs(tr.vecPlaneNormal.z) > 1e-5)
+			WriteData(vecFlakeDir);
+		else [[unlikely]]
+			WriteData(tr.vecEndPos + tr.vecPlaneNormal);
+
+		WriteData((uint16_t)SPR_Snowflake);
+		WriteData((uint8_t)std::clamp(std::lroundf(flDamage / 4.f), 2l, 16l));
+		WriteData((uint8_t)6);	// Life, in 0.1', doesn't work??
+		WriteData((uint8_t)1);	// Size
+		WriteData((uint8_t)std::clamp(std::lroundf(flDamage / 2.f), 0l, 255l));
+		WriteData((uint8_t)18);
+		MsgEnd();
+
+		CreateSnowSplash(tr);
+		UTIL_DLight(tr.vecEndPos, 1.f, { 255, 255, 255, }, 0.1f, 0);
+
+		co_await TaskScheduler::NextFrame::Rank[0];
+		Effects::Surface::Snow(tr);
+
+		break;
+	}
+
 	default:
 		CreateWallPuff(tr);
 		break;
 	}
+
+	co_await TaskScheduler::NextFrame::Rank[0];
 
 	// Bullet impact SFX
 	switch (cTextureType)
@@ -426,8 +475,6 @@ static Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTextureType, f
 	default:
 		break;
 	}
-
-	co_await TaskScheduler::NextFrame::Rank[0];
 
 	// ricochet sfx
 	if (UTIL_Random())

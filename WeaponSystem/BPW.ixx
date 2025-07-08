@@ -31,6 +31,28 @@ export struct CCombinedModelInfo final
 	int m_iBModelBodyVal{ -1 };
 };
 
+struct CMaterializedWeaponModelInfoCell final
+{
+	string_view m_szModel{};
+
+	string m_szPlayerAnim{};
+	int m_iSequence{ -1 };
+
+	int m_iBodyVal{ -1 };
+
+	[[nodiscard]] constexpr bool IsValid() const noexcept
+	{
+		return !m_szModel.empty() && m_iSequence >= 0 && m_iBodyVal >= 0;
+	}
+};
+
+struct CMaterializedWeaponModelInfo final
+{
+	CMaterializedWeaponModelInfoCell m_BackModel{};
+	CMaterializedWeaponModelInfoCell m_PossessedModel{};
+	CMaterializedWeaponModelInfoCell m_WorldModel{};
+};
+
 export inline std::map<string, CCombinedModelInfo, sv_iless_t> gCombinedModelInfo;
 
 // Should be executed before Resource::Precache()!
@@ -87,7 +109,7 @@ export void PrecacheCombinedModels() noexcept
 		{
 			UTIL_Terminate(
 				"Bad BPW model: \"%s\"\n"
-				"Can only composed by 1 bodygroup, but %d found.\n",
+				"Should only be composed from 1 bodygroup, but %d found.\n",
 				szModel.c_str(),
 				pTranscription->m_Parts.size()
 			);
@@ -116,7 +138,7 @@ export void PrecacheCombinedModels() noexcept
 					UTIL_Terminate(
 						"Bad BPW model: \"%s\"\n"
 						"Unrecognized config string '%s' found in \"%s\"\n"
-						"It must be \"[b][p][w]_weaponName\".\n",
+						"It must be \"[b][p][w]_[shield_]weaponName\".\n",
 						szModel.c_str(),
 						szConfig2.c_str(), szLabel.data()
 					);
@@ -147,17 +169,17 @@ export void PrecacheCombinedModels() noexcept
 	for (auto&& [szWeapon, Info] : gCombinedModelInfo)
 	{
 		if (Info.m_szModel.empty())
-			szError += std::format("{}: No model found.\n", szWeapon);
+			szError += std::format("\"{}\": No model found.\n", szWeapon);
 		if (Info.m_szPlayerAnim.empty())
-			szError += std::format("{}: Bad player animation set.\n", szWeapon);
+			szError += std::format("\"{}\": Bad player animation set.\n", szWeapon);
 		if (Info.m_iSequence < 0)
-			szError += std::format("{}: Bad combined model sequence index.\n", szWeapon);
+			szError += std::format("\"{}\": Bad combined model sequence index.\n", szWeapon);
 		if (Info.m_iBModelBodyVal < 0)
-			szError += std::format("{}: Bad B Model submodel pev->body value.\n", szWeapon);
+			szError += std::format("\"{}\": Bad B Model submodel pev->body value.\n", szWeapon);
 		if (Info.m_iPModelBodyVal < 0)
-			szError += std::format("{}: Bad P Model submodel pev->body value.\n", szWeapon);
+			szError += std::format("\"{}\": Bad P Model submodel pev->body value.\n", szWeapon);
 		if (Info.m_iWModelBodyVal < 0)
-			szError += std::format("{}: Bad W Model submodel pev->body value.\n", szWeapon);
+			szError += std::format("\"{}\": Bad W Model submodel pev->body value.\n", szWeapon);
 	}
 
 	if (!szError.empty()) [[unlikely]]
