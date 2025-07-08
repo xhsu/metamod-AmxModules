@@ -361,22 +361,17 @@ struct CBasePistol : CPrefabWeapon
 		m_pPlayer->TabulateAmmo();
 
 		m_pPlayer->pev->viewmodel = MAKE_STRING(T::MODEL_V);
-		m_pPlayer->pev->weaponmodel = MAKE_STRING(T::MODEL_P);
-		pev->effects |= EF_NODRAW;
-
 		model_name = m_pPlayer->pev->viewmodel;
-		strcpy(m_pPlayer->m_szAnimExtention, T::ANIM_3RD_PERSON);
-		m_Scheduler.Enroll(Task_WeaponAnim(pAnim), TASK_ANIMATION, true);
+		m_Scheduler.Enroll(Task_WeaponAnim(pAnim), TASK_ANIMATION, true);	// Deploy anim.
+
+		CRTP()->UpdateThirdPersonModel(TASK_BEHAVIOR_DRAW);
 
 		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
 		{
 			if (m_pPlayer->HasShield())
-			{
 				m_pPlayer->pev->viewmodel = MAKE_STRING(T::MODEL_V_SHIELD);
-				m_pPlayer->pev->weaponmodel = MAKE_STRING(T::MODEL_P_SHIELD);
 
-				strcpy(m_pPlayer->m_szAnimExtention, "shieldgun");
-			}
+			// P model for shield was put in UpdateThirdPersonModel()
 		}
 
 		m_pPlayer->m_flNextAttack = pAnim->m_total_length;
@@ -1116,7 +1111,13 @@ struct CBasePistol : CPrefabWeapon
 
 	void Holster(int skiplocal = 0) noexcept override
 	{
-		__super::Holster(skiplocal);
+		// cancel any reload in progress.
+		m_fInReload = false;
+		m_fInSpecialReload = false;
+		m_pPlayer->pev->viewmodel = 0;
+
+		CRTP()->UpdateThirdPersonModel(TASK_BEHAVIOR_HOLSTER);
+
 		m_Scheduler.Clear();
 		pev->effects &= ~EF_NODRAW;
 	}
@@ -1138,7 +1139,7 @@ public: // Materializing weapon, like CWeaponBox
 			return;
 		}
 
-		if (!CanDrop())
+		if (!CRTP()->CanDrop())
 		{
 			gmsgTextMsg::Send(m_pPlayer->edict(), HUD_PRINTCENTER, "#Weapon_Cannot_Be_Dropped");
 			return;
@@ -1146,7 +1147,6 @@ public: // Materializing weapon, like CWeaponBox
 
 		// take item off hud
 		m_pPlayer->pev->weapons &= ~(1 << m_iId);
-		//TaskScheduler::Enroll(Task_FreeHudSlot(m_pPlayer, CRTP()->DAT_HUD_NAME));
 
 		// No more weapon
 		if ((m_pPlayer->pev->weapons & ~(1 << WEAPON_SUIT)) == 0)
@@ -1265,10 +1265,10 @@ public: // Materializing weapon, like CWeaponBox
 
 	void Kill(void) noexcept override
 	{
-		pev->flags |= FL_KILLME;
+		if (m_pPlayer && m_pPlayer->m_pActiveItem == this)
+			CRTP()->Holster();
 
-		//if (m_pPlayer)
-		//	TaskScheduler::Enroll(Task_FreeHudSlot(m_pPlayer, CRTP()->DAT_HUD_NAME));
+		pev->flags |= FL_KILLME;
 	}
 
 	void Touch_Nonplayer(CBaseEntity* pOther) noexcept
@@ -1319,7 +1319,7 @@ public: // Materializing weapon, like CWeaponBox
 	{
 		if (CRTP()->m_iDefaultAmmo > 0)
 		{
-			if (m_pPlayer->GiveAmmo(
+			if (CRTP()->m_pPlayer->GiveAmmo(
 				CRTP()->m_iDefaultAmmo,
 				(char*)CRTP()->DAT_AMMUNITION->m_szName.data(),
 				CRTP()->DAT_AMMUNITION->m_iMax) > 0
@@ -1471,6 +1471,86 @@ public: // Materializing weapon, like CWeaponBox
 		this->m_Scheduler.Delist(TASK_ALL_MATERIALIZED);
 	}
 
+	void UpdateThirdPersonModel(EWeaponTaskFlags2 iType) const noexcept
+	{
+		// Assume m_pPlayer is properly set.
+
+		if constexpr (requires { T::FLAG_USING_OLD_PW; })
+		{
+			switch (iType)
+			{
+			case TASK_BEHAVIOR_DRAW:
+			{
+				m_pPlayer->pev->weaponmodel = MAKE_STRING(T::MODEL_P);
+				this->pev->effects |= EF_NODRAW;	// Hide this entity and using standard P model.
+
+				strncpy(m_pPlayer->m_szAnimExtention, T::ANIM_3RD_PERSON, sizeof(m_pPlayer->m_szAnimExtention) - 1);
+				*std::ranges::rbegin(m_pPlayer->m_szAnimExtention) = '\0';
+
+				if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
+				{
+					if (m_pPlayer->HasShield())
+					{
+						m_pPlayer->pev->weaponmodel = MAKE_STRING(T::MODEL_P_SHIELD);
+						strcpy(m_pPlayer->m_szAnimExtention, "shieldgun");
+					}
+				}
+			}
+			case TASK_BEHAVIOR_HOLSTER:
+			{
+				m_pPlayer->pev->weaponmodel = 0;
+				this->pev->effects |= EF_NODRAW;
+			}
+			default: [[unlikely]]
+				break;
+			}
+		}
+		else
+		{
+			switch (iType)
+			{
+			case TASK_BEHAVIOR_DRAW:
+			{
+				// Assume that the model is properly set in AttachToPlayer().
+				auto const pInfo = CRTP()->GetCombinedModelInfo();
+				assert(pInfo != nullptr);
+
+				m_pPlayer->pev->weaponmodel = 0;
+				this->pev->effects &= ~EF_NODRAW;	// Hide standard P model and using MOVETYPE_FOLLOW and pev->aiment.
+
+				pev->body = pInfo->m_iPModelBodyVal;
+				pev->sequence = pInfo->m_iSequence;
+
+				strncpy(m_pPlayer->m_szAnimExtention, pInfo->m_szPlayerAnim.c_str(), sizeof(m_pPlayer->m_szAnimExtention) - 1);
+				*std::ranges::rbegin(m_pPlayer->m_szAnimExtention) = '\0';
+
+				if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
+				{
+					if (m_pPlayer->HasShield())
+					{
+						this->pev->effects |= EF_NODRAW;
+						m_pPlayer->pev->weaponmodel = MAKE_STRING(T::MODEL_P_SHIELD);
+						strcpy(m_pPlayer->m_szAnimExtention, "shieldgun");
+					}
+				}
+			}
+			case TASK_BEHAVIOR_HOLSTER:
+			{
+				auto const pInfo = CRTP()->GetCombinedModelInfo();
+				assert(pInfo != nullptr);
+
+				m_pPlayer->pev->weaponmodel = 0;
+				this->pev->effects &= ~EF_NODRAW;
+
+				pev->body = pInfo->m_iBModelBodyVal;
+				pev->sequence = pInfo->m_iSequence;
+			}
+			default: [[unlikely]]
+				break;
+			}
+		}
+	}
+
 public:
 	constexpr bool IsSilenced() const noexcept
 	{
@@ -1546,7 +1626,7 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 		static inline constexpr auto INCLUSION = std::array{ "last"sv, "empty"sv, };
 	};
 	struct AnimDat_Draw final {
-		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, };
+		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, "select"sv, };
 	};
 	struct AnimDat_Reload final {
 		static inline constexpr std::array KEYWORD{ "reload"sv, };
@@ -1686,7 +1766,7 @@ struct CPistolUSP : CBasePistol<CPistolUSP>
 		static inline constexpr auto EXCLUSION = UTIL_MergeArray(/*KEYWORD_SHIELD, */KEYWORD_UNSIL, std::array{ "shield"sv, });
 	};
 	struct AnimDat_Draw final {
-		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, };
+		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, "select"sv, };
 		static inline constexpr std::array KEYWORD_UNSIL{ "unsil"sv, };
 
 		static inline constexpr auto EXCLUSION = UTIL_MergeArray(/*KEYWORD_SHIELD, */KEYWORD_UNSIL, std::array{ "shield"sv, });
@@ -1823,7 +1903,7 @@ struct CPistolP228 : CBasePistol<CPistolP228>
 		static inline constexpr auto INCLUSION = std::array{ "last"sv, "empty"sv, };
 	};
 	struct AnimDat_Draw final {
-		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, };
+		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, "select"sv, };
 	};
 	struct AnimDat_Reload final {
 		static inline constexpr std::array KEYWORD{ "reload"sv, };
@@ -1927,7 +2007,7 @@ struct CPistolDeagle : CBasePistol<CPistolDeagle>
 		static inline constexpr auto INCLUSION = std::array{ "last"sv, "empty"sv, };
 	};
 	struct AnimDat_Draw final {
-		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, };
+		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, "select"sv, };
 	};
 	struct AnimDat_Reload final {
 		static inline constexpr std::array KEYWORD{ "reload"sv, };
@@ -2031,7 +2111,7 @@ struct CPistolFN57 : CBasePistol<CPistolFN57>
 		static inline constexpr auto INCLUSION = std::array{ "last"sv, "empty"sv, };
 	};
 	struct AnimDat_Draw final {
-		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, };
+		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, "select"sv, };
 	};
 	struct AnimDat_Reload final {
 		static inline constexpr std::array KEYWORD{ "reload"sv, };
@@ -2143,7 +2223,7 @@ struct CPistolBeretta : CBasePistol<CPistolBeretta>
 		static inline constexpr auto INCLUSION = std::array{ "rightlast"sv, "rightempty"sv, };
 	};
 	struct AnimDat_Draw final {
-		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, };
+		static inline constexpr std::array KEYWORD{ "draw"sv, "deploy"sv, "select"sv, };
 	};
 	struct AnimDat_Reload final {
 		static inline constexpr std::array KEYWORD{ "reload"sv, };

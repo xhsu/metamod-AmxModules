@@ -18,6 +18,8 @@ import hlsdk;
 
 import UtlString;
 
+import Uranus;
+
 export struct CAmmoInfo
 {
 	std::string_view m_szName{};
@@ -81,6 +83,7 @@ auto Ammo_Register(CAmmoInfo AmmoInfo) noexcept -> CAmmoInfo const*
 	AmmoInfo.m_iAmmoId = static_cast<decltype(CAmmoInfo::m_iAmmoId)>(gAmmoInfo.size() + 1);	// Starting from 1.
 
 	auto&& [it, bNew] = gAmmoInfo.emplace(std::move(AmmoInfo));
+	Uranus::AddAmmoNameToAmmoRegistry{}(it->m_szName.data());
 
 	return std::addressof(*it);
 }
