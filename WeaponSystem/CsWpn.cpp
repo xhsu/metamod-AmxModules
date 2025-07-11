@@ -1180,7 +1180,17 @@ public: // Materializing weapon, like CWeaponBox
 		else
 			pev->velocity = m_pPlayer->pev->velocity;	// Drop along with the dead guy.
 
-		g_engfuncs.pfnSetModel(edict(), T::MODEL_W);
+		if constexpr (requires { T::FLAG_USING_OLD_PW; })
+			g_engfuncs.pfnSetModel(edict(), T::MODEL_W);
+		else
+		{
+			auto const pInfo = CRTP()->GetCombinedModelInfo();
+			g_engfuncs.pfnSetModel(edict(), pInfo->m_szModel.data());
+			pev->angles = Angles::Upwards();
+			pev->sequence = pInfo->m_iSequence;
+			pev->body = pInfo->m_iWModelBodyVal;
+		}
+
 		g_engfuncs.pfnSetSize(edict(), Vector{ -16, -16, -0.5f }, Vector{ 16, 16, 0.5f });
 		g_engfuncs.pfnSetOrigin(edict(), m_pPlayer->GetGunPosition() + m_pPlayer->pev->v_angle.Front() * 70);
 
