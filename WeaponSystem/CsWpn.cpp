@@ -1294,15 +1294,17 @@ public: // Materializing weapon, like CWeaponBox
 	{
 		for (;; co_await 0.1f)
 		{
-			auto const szWpnInfo = std::format(
-				"pev->weapons: {:X}\n"
-				"m_iId == {}\n"
-				"\n",
-				std::bit_cast<uint32_t>(m_pPlayer->pev->weapons),
-				m_iId
-			);
-
-			g_engfuncs.pfnServerPrint(szWpnInfo.c_str());
+			//auto const szWpnInfo = std::format(
+			//	"pev->model: {}\n"
+			//	"pev->effect: {:b}\n"
+			//	"pev->body: {}\n"
+			//	"\n",
+			//	STRING(pev->model),
+			//	pev->effects,
+			//	pev->body
+			//);
+			//
+			//g_engfuncs.pfnServerPrint(szWpnInfo.c_str());
 		}
 
 		co_return;
@@ -1445,19 +1447,25 @@ public: // Materializing weapon, like CWeaponBox
 		pev->movetype = MOVETYPE_FOLLOW;
 		pev->solid = SOLID_NOT;
 		pev->aiment = pPlayer->edict();
-		pev->effects = EF_NODRAW;
 
 		if (auto const pInfo = CRTP()->GetCombinedModelInfo())
 		{
-			g_engfuncs.pfnSetModel(CRTP()->edict(), pInfo->m_szModel.data());
-			pev->body = pInfo->m_iBModelBodyVal;
-			pev->sequence = pInfo->m_iSequence;
+			if (pPlayer->m_pActiveItem != this)
+			{
+				g_engfuncs.pfnSetModel(CRTP()->edict(), pInfo->m_szModel.data());
+				pev->body = pInfo->m_iBModelBodyVal;
+				pev->sequence = pInfo->m_iSequence;
+				pev->effects &= ~EF_NODRAW;
+			}
+
+			// otherwise it's already setup in Deploy().
 		}
 		else
 		{
 			// server won't send down to clients if modelindex == 0
 			pev->modelindex = 0;
 			pev->model = 0;
+			pev->effects |= EF_NODRAW;
 		}
 
 		pev->owner = pPlayer->edict();
@@ -1495,11 +1503,15 @@ public: // Materializing weapon, like CWeaponBox
 						strcpy(m_pPlayer->m_szAnimExtention, "shieldgun");
 					}
 				}
+
+				break;
 			}
 			case TASK_BEHAVIOR_HOLSTER:
 			{
 				m_pPlayer->pev->weaponmodel = 0;
 				this->pev->effects |= EF_NODRAW;
+
+				break;
 			}
 			default: [[unlikely]]
 				break;
@@ -1507,17 +1519,17 @@ public: // Materializing weapon, like CWeaponBox
 		}
 		else
 		{
+			auto const pInfo = CRTP()->GetCombinedModelInfo();
+			assert(pInfo != nullptr);
+
 			switch (iType)
 			{
 			case TASK_BEHAVIOR_DRAW:
 			{
-				// Assume that the model is properly set in AttachToPlayer().
-				auto const pInfo = CRTP()->GetCombinedModelInfo();
-				assert(pInfo != nullptr);
-
 				m_pPlayer->pev->weaponmodel = 0;
 				this->pev->effects &= ~EF_NODRAW;	// Hide standard P model and using MOVETYPE_FOLLOW and pev->aiment.
 
+				g_engfuncs.pfnSetModel(CRTP()->edict(), pInfo->m_szModel.data());
 				pev->body = pInfo->m_iPModelBodyVal;
 				pev->sequence = pInfo->m_iSequence;
 
@@ -1533,17 +1545,19 @@ public: // Materializing weapon, like CWeaponBox
 						strcpy(m_pPlayer->m_szAnimExtention, "shieldgun");
 					}
 				}
+
+				break;
 			}
 			case TASK_BEHAVIOR_HOLSTER:
 			{
-				auto const pInfo = CRTP()->GetCombinedModelInfo();
-				assert(pInfo != nullptr);
-
 				m_pPlayer->pev->weaponmodel = 0;
 				this->pev->effects &= ~EF_NODRAW;
 
+				g_engfuncs.pfnSetModel(CRTP()->edict(), pInfo->m_szModel.data());
 				pev->body = pInfo->m_iBModelBodyVal;
 				pev->sequence = pInfo->m_iSequence;
+
+				break;
 			}
 			default: [[unlikely]]
 				break;
@@ -1619,7 +1633,7 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 	};
 	struct AnimDat_Shoot final {
 		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };	// G18 gets a weird anim sequence.
-		static inline constexpr auto EXCLUSION = std::array{ "last"sv, "empty"sv, };
+		static inline constexpr auto EXCLUSION = std::array{ "last"sv, "empty"sv, "burst"sv, };
 	};
 	struct AnimDat_ShootLast final {
 		static inline constexpr std::array KEYWORD{ "shoot"sv, "fire"sv, };
