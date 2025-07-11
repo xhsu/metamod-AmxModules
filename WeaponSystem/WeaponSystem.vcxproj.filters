@@ -16,6 +16,9 @@
     <Filter Include="CSDK">
       <UniqueIdentifier>{ff962bc1-f23b-4ea9-8f05-1c5df404ea94}</UniqueIdentifier>
     </Filter>
+    <Filter Include="CSDK.Ext">
+      <UniqueIdentifier>{44316bfd-c0d3-4d71-912c-09ba98cbe925}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.ixx">
@@ -138,16 +141,10 @@
     <ClCompile Include="FireBullets.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
-    <ClCompile Include="Decal.ixx">
-      <Filter>Sources</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\ZBot.ixx">
       <Filter>CSDK</Filter>
     </ClCompile>
     <ClCompile Include="Tutor.cpp">
-      <Filter>Sources</Filter>
-    </ClCompile>
-    <ClCompile Include="Resources.ixx">
       <Filter>Sources</Filter>
     </ClCompile>
     <ClCompile Include="..\..\metamod-AirSupport\Source\CSDK\Sprite.ixx">
@@ -186,6 +183,15 @@
     <ClCompile Include="Effect.Surface.cpp">
       <Filter>Sources</Filter>
     </ClCompile>
+    <ClCompile Include="Resources.ixx">
+      <Filter>CSDK.Ext</Filter>
+    </ClCompile>
+    <ClCompile Include="Decal.ixx">
+      <Filter>CSDK.Ext</Filter>
+    </ClCompile>
+    <ClCompile Include="Server.ixx">
+      <Filter>CSDK.Ext</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp">
@@ -209,5 +215,10 @@
     <ClInclude Include="..\..\metamod-p\metamod\metamod_api.hpp">
       <Filter>API.Misc</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="..\..\metamod-p\hlsdk\msvc\hlsdk.debugging.natvis">
+      <Filter>API.Engine</Filter>
+    </Natvis>
   </ItemGroup>
 </Project>

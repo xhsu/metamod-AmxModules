@@ -13,6 +13,7 @@ import Message;
 import PlayerItem;
 import Prefab;
 import Resources;
+import Server;
 import Sprite;
 import Task;
 import Uranus;
@@ -44,6 +45,7 @@ void fw_GameInit_Post() noexcept
 	FileSystem::Init();
 	Engine::Init();	// Get engine build number
 	TaskScheduler::Policy() = ESchedulerPolicy::UNORDERED;	// It is very likely that we don't need to have it sorted.
+	RetrieveServerStatics();
 
 	DeployInlineHooks();
 

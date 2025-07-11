@@ -136,6 +136,7 @@
     <ClCompile Include="Resources.ixx" />
     <ClCompile Include="Round.cpp" />
     <ClCompile Include="Effect.Surface.cpp" />
+    <ClCompile Include="Server.ixx" />
     <ClCompile Include="Tutor.cpp" />
     <ClCompile Include="WpnIdAllocator.ixx" />
   </ItemGroup>
@@ -147,6 +148,9 @@
     <ClInclude Include="..\..\metamod-p\hlsdk\engine\hlsdk.customentity.hpp" />
     <ClInclude Include="..\..\metamod-p\hlsdk\engine\hlsdk.engine.hpp" />
     <ClInclude Include="..\..\metamod-p\metamod\metamod_api.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="..\..\metamod-p\hlsdk\msvc\hlsdk.debugging.natvis" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
