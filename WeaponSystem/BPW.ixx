@@ -59,7 +59,14 @@ export inline std::map<string, CCombinedModelInfo, sv_iless_t> gCombinedModelInf
 export void PrecacheCombinedModels() noexcept
 {
 	if (!g_rgszCombinedModels.empty())
+	{
+		// Just reprecache during server reloading
+		g_rgiCombinedModelIndeces.clear();
+		for (auto&& szModel : g_rgszCombinedModels)
+			g_rgiCombinedModelIndeces.push_back(g_engfuncs.pfnPrecacheModel(szModel.c_str()));
+
 		return;
+	}
 
 	for (int i = 0; i < 128; ++i)
 	{
