@@ -8,6 +8,7 @@ import Prefab;
 import Resources;
 import Task;
 import Sprite;
+import WinAPI;
 
 
 enum ETaskFlags : std::uint64_t
@@ -168,6 +169,7 @@ struct CGunSmoke : Prefab_t
 		pev->movetype = MOVETYPE_NOCLIP;
 		pev->gravity = 0;
 		pev->scale = UTIL_Random(0.6f, 0.75f);
+		pev->owner = m_pPlayer->edict();
 
 		auto const& GunSmokeSpr = m_bIsPistol ? UTIL_GetRandomOne(PistolSmokes) : UTIL_GetRandomOne(RifleSmokes);
 		g_engfuncs.pfnSetModel(edict(), GunSmokeSpr);
@@ -204,6 +206,63 @@ struct CGunSmoke : Prefab_t
 edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol, bool bShootingLeft) noexcept
 {
 	return CGunSmoke::Create(pPlayer, bIsPistol, bShootingLeft)->edict();
+}
+
+struct CSnowSteam : Prefab_t
+{
+	static inline constexpr char CLASSNAME[] = "env_wall_puff";
+	static inline constexpr double FPS = 30.0;
+	static inline Resource::Add STEAM_SPRITE{ "sprites/WSIV/bettyspr5.spr" };
+
+	CSnowSteam(TraceResult const& tr) noexcept : m_tr{ tr } {}
+
+	void Spawn() noexcept override
+	{
+		auto const flLightness = UTIL_Random(1.0, 48.0);
+
+		pev->rendermode = kRenderTransAdd;
+		pev->renderamt = UTIL_Random(192.f, 255.f);	// Alpha?
+		pev->rendercolor = Vector(0xFF, 0xFF, 0xFF);	// Color. Cannot be 0x000000
+		pev->frame = 0;
+
+		pev->solid = SOLID_NOT;
+		pev->movetype = MOVETYPE_NOCLIP;
+		pev->gravity = 0;
+		pev->scale = UTIL_Random(0.6f, 0.75f);
+
+		g_engfuncs.pfnSetModel(edict(), STEAM_SPRITE);
+
+		Vector const vecDir = m_tr.vecPlaneNormal + CrossProduct(m_tr.vecPlaneNormal,
+			(m_tr.vecPlaneNormal - Vector::Up()).LengthSquared() < std::numeric_limits<float>::epsilon() ? Vector::Front() : Vector::Up()
+		);
+
+		pev->velocity = vecDir.Normalize() * UTIL_Random(24.0, 48.0);
+
+		g_engfuncs.pfnSetOrigin(edict(), m_tr.vecEndPos + m_tr.vecPlaneNormal * 24.0 * pev->scale);
+
+		m_Scheduler.Enroll(Task_SpritePlayOnce(pev, GoldSrc::SpriteInfo[STEAM_SPRITE]->m_iNumOfFrames, FPS), TASK_ANIMATION);
+		m_Scheduler.Enroll(Task_FadeOut(pev, 0.f, 1.f, 0.07f, 0), TASK_FADE_OUT);
+	}
+
+	static CSnowSteam* Create(const TraceResult& tr) noexcept
+	{
+		auto const [pEdict, pPrefab]
+			= UTIL_CreateNamedPrefab<CSnowSteam>(tr);
+
+		pEdict->v.origin = tr.vecEndPos;
+
+		pPrefab->Spawn();
+		pPrefab->pev->nextthink = 0.1f;
+
+		return pPrefab;
+	}
+
+	TraceResult m_tr{};
+};
+
+edict_t* CreateSnowSteam(TraceResult const& tr) noexcept
+{
+	return CSnowSteam::Create(tr)->edict();
 }
 
 struct CSpark3D : Prefab_t
@@ -359,4 +418,20 @@ struct CWaterSplash : Prefab_t
 edict_t* CreateWaterSplash3D(Vector const& vecOrigin) noexcept
 {
 	return Prefab_t::Create<CWaterSplash>(vecOrigin, Angles::Upwards())->edict();
+}
+
+// Forwards
+
+void Effect_AddToFullPack_Post(entity_state_t* pState, int iEntIndex, edict_t* pEdict, edict_t* pClientSendTo, qboolean cl_lw, qboolean bIsPlayer, unsigned char* pSet) noexcept
+{
+	if (!UTIL_IsLocalRtti(pEdict->pvPrivateData)) [[likely]]
+		return;
+
+	auto const pEntity = ent_cast<CBaseEntity*>(pEdict);
+	auto const pGunSmoke = dynamic_cast<CGunSmoke*>(pEntity);
+
+	if (pGunSmoke == nullptr)
+		return;
+
+	//if (pGunSmoke->m_pPlayer->pev)
 }

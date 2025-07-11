@@ -153,6 +153,7 @@ inline Resource::Add SFX_RICO_METAL[] =
 
 // Effect.cpp
 extern edict_t* CreateWallPuff(TraceResult const& tr) noexcept;
+extern edict_t* CreateSnowSteam(TraceResult const& tr);
 extern edict_t* CreateSpark3D(TraceResult const& tr) noexcept;
 extern edict_t* CreateSnowSplash(TraceResult const& tr) noexcept;
 extern edict_t* CreateWaterSplash3D(Vector const& vecOrigin) noexcept;
@@ -216,11 +217,6 @@ static Task VFX_WaterSplash(Vector vecSrc, Vector vecEnd) noexcept
 	);
 
 	co_return;
-}
-
-namespace Effects::Surface
-{
-	extern void Snow(TraceResult const& tr) noexcept;
 }
 
 static Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTextureType, float flDamage) noexcept
@@ -352,10 +348,9 @@ static Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTextureType, f
 		MsgEnd();
 
 		CreateSnowSplash(tr);
-		UTIL_DLight(tr.vecEndPos, 1.f, { 255, 255, 255, }, 0.1f, 0);
+		CreateSnowSteam(tr);
 
-		co_await TaskScheduler::NextFrame::Rank[0];
-		Effects::Surface::Snow(tr);
+		//UTIL_DLight(tr.vecEndPos, 1.f, { 255, 255, 255, }, 0.1f, 0);
 
 		break;
 	}
