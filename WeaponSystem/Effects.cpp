@@ -6,9 +6,13 @@ import UtlString;
 
 import Prefab;
 import Resources;
-import Task;
+import Server;
 import Sprite;
+import Task;
 import WinAPI;
+import Studio;
+import CBase;
+import Message;
 
 
 enum ETaskFlags : std::uint64_t
@@ -69,6 +73,24 @@ static Task Task_Remove(entvars_t* const pev, float const TIME) noexcept
 	co_await TIME;
 
 	pev->flags |= FL_KILLME;
+}
+
+static Task Task_TellMeWhere(CBasePlayer *pPlayer, Vector vecOfs) noexcept
+{
+	for (;; co_await 0.1f)
+	{
+		auto&& [fwd, right, up]
+			= (pPlayer->pev->v_angle + pPlayer->pev->punchangle).AngleVectors();
+
+		auto const vec =
+			pPlayer->pev->origin + pPlayer->pev->view_ofs
+			+ up * vecOfs.z + fwd * vecOfs.x + right * vecOfs.y;
+
+		MsgBroadcast(SVC_TEMPENTITY);
+		WriteData(TE_SPARKS);
+		WriteData(vec);
+		MsgEnd();
+	}
 }
 
 
@@ -154,7 +176,13 @@ struct CGunSmoke : Prefab_t
 		"sprites/pistol_smoke2.spr",
 	};
 
-	CGunSmoke(CBasePlayer* pPlayer, bool bIsPistol) noexcept : m_pPlayer{ pPlayer }, m_bIsPistol{ bIsPistol } {}
+	CGunSmoke(CBasePlayer* pPlayer, bool bIsPistol) noexcept
+		: m_pPlayer{ pPlayer }, m_bIsPistol{ bIsPistol } {
+		g_engfuncs.pfnGetAttachment(pPlayer->edict(), 0, m_vecWorldGunshotSpot, nullptr);
+		auto&&[vec, ang] = GetAttachment2(g_engfuncs.pfnModelIndex(STRING(pPlayer->pev->viewmodel)), 0, 0, 0);
+		m_vecViewModelMuzzle = vec;
+		UTIL_Random();
+	}
 
 	void Spawn() noexcept override
 	{
@@ -178,6 +206,7 @@ struct CGunSmoke : Prefab_t
 
 		m_Scheduler.Enroll(Task_SpritePlayOnce(pev, GoldSrc::SpriteInfo[GunSmokeSpr.m_pszName]->m_iNumOfFrames, FPS), TASK_ANIMATION);
 		m_Scheduler.Enroll(Task_FadeOut(pev, 0.f, 1.f, 0.07f, UTIL_Random(0.65f, 0.85f)), TASK_FADE_OUT);
+		//m_Scheduler.Enroll(Task_TellMeWhere(m_pPlayer, m_vecViewModelMuzzle));
 	}
 
 	static CGunSmoke* Create(CBasePlayer* pPlayer, bool bIsPistol, bool bShootingLeft) noexcept
@@ -189,9 +218,9 @@ struct CGunSmoke : Prefab_t
 			= (pPlayer->pev->v_angle + pPlayer->pev->punchangle).AngleVectors();
 
 		if (!bShootingLeft)
-			pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * -9 + fwd * 32 + right * 8;
+			pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * pPrefab->m_vecViewModelMuzzle.z + fwd * pPrefab->m_vecViewModelMuzzle.x + right * pPrefab->m_vecViewModelMuzzle.y;
 		else
-			pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * -9 + fwd * 32 - right * 8;
+			pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * pPrefab->m_vecViewModelMuzzle.z + fwd * pPrefab->m_vecViewModelMuzzle.x - right * pPrefab->m_vecViewModelMuzzle.y;
 
 		pPrefab->Spawn();
 		pPrefab->pev->nextthink = 0.1f;
@@ -201,6 +230,8 @@ struct CGunSmoke : Prefab_t
 
 	CBasePlayer* m_pPlayer{};
 	bool m_bIsPistol{};
+	Vector m_vecWorldGunshotSpot{};	// Attachment #0
+	Vector m_vecViewModelMuzzle{};	// Attachment #0
 };
 
 edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol, bool bShootingLeft) noexcept
@@ -422,9 +453,9 @@ edict_t* CreateWaterSplash3D(Vector const& vecOrigin) noexcept
 
 // Forwards
 
-void Effect_AddToFullPack_Post(entity_state_t* pState, int iEntIndex, edict_t* pEdict, edict_t* pClientSendTo, qboolean cl_lw, qboolean bIsPlayer, unsigned char* pSet) noexcept
+void Effect_AddToFullPack_Post(entity_state_t* pState, edict_t* pEdict, edict_t* pClientSendTo, bool bIsPlayer) noexcept
 {
-	if (!UTIL_IsLocalRtti(pEdict->pvPrivateData)) [[likely]]
+	if (bIsPlayer || !UTIL_IsLocalRtti(pEdict->pvPrivateData)) [[likely]]
 		return;
 
 	auto const pEntity = ent_cast<CBaseEntity*>(pEdict);
@@ -433,5 +464,10 @@ void Effect_AddToFullPack_Post(entity_state_t* pState, int iEntIndex, edict_t* p
 	if (pGunSmoke == nullptr)
 		return;
 
-	//if (pGunSmoke->m_pPlayer->pev)
+	auto const pOwnerEdict = pGunSmoke->m_pPlayer->edict();
+	if (pClientSendTo != pOwnerEdict
+		|| (pClientSendTo == pOwnerEdict && !UTIL_IsFirstPersonal(pOwnerEdict)))
+	{
+		pState->origin = pGunSmoke->m_vecWorldGunshotSpot;
+	}
 }

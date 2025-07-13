@@ -787,11 +787,17 @@ struct CBasePistol : CPrefabWeapon
 
 	Task Task_ShootingEffects(bool bShootingLeft) const noexcept
 	{
+		Vector vecGunOrigin;
+		g_engfuncs.pfnGetAttachment(m_pPlayer->edict(), 0, vecGunOrigin, nullptr);
+
 		if constexpr (requires { T::FLAG_DUAL_WIELDING; })
 		{
 			// Fuck CS left hand issue.
 			bShootingLeft = !bShootingLeft;
 		}
+
+		if (bShootingLeft)
+			g_engfuncs.pfnGetAttachment(m_pPlayer->edict(), 1, vecGunOrigin, nullptr);
 
 		CRTP()->EFFC_SND_FIRING();
 
@@ -801,7 +807,7 @@ struct CBasePistol : CPrefabWeapon
 
 		if (!IsSilenced())
 		{
-			UTIL_DLight(m_pPlayer->GetGunPosition(), 4.5f, { 255, 150, 15 }, 8, 60);
+			UTIL_DLight(vecGunOrigin, 4.5f, { 255, 150, 15 }, 8, 60);
 
 			co_await TaskScheduler::NextFrame::Rank[0];
 			if (!m_pPlayer->IsAlive())

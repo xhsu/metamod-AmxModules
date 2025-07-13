@@ -32,6 +32,10 @@ extern META_RES fw_PlayerPostThink(edict_t*) noexcept;
 extern qboolean fw_AddToFullPack_Post(entity_state_t* pState, int iEntIndex, edict_t* pEdict, edict_t* pClientSendTo, qboolean cl_lw, qboolean bIsPlayer, unsigned char* pSet) noexcept;
 //
 
+// Effect.cpp
+extern void Effect_AddToFullPack_Post(entity_state_t* pState, edict_t* pEdict, edict_t* pClientSendTo, bool bIsPlayer) noexcept;
+//
+
 
 // Receive engine function table from engine.
 // This appears to be the _first_ DLL routine called by the engine, so we do some setup operations here.
@@ -178,7 +182,7 @@ static int HookGameDLLExportedFn_Post(DLL_FUNCTIONS *pFunctionTable, int *interf
 
 		.pfnSetupVisibility			= nullptr,
 		.pfnUpdateClientData		= &fw_UpdateClientData_Post,
-		.pfnAddToFullPack			= &fw_AddToFullPack_Post,
+		.pfnAddToFullPack			= [](entity_state_t* pState, int iEntIndex, edict_t* pEdict, edict_t* pClientSendTo, qboolean cl_lw, qboolean bIsPlayer, unsigned char* pSet) noexcept -> qboolean { fw_AddToFullPack_Post(pState, iEntIndex, pEdict, pClientSendTo, cl_lw, bIsPlayer, pSet); Effect_AddToFullPack_Post(pState, pEdict, pClientSendTo, bIsPlayer); return false; },
 		.pfnCreateBaseline			= nullptr,
 		.pfnRegisterEncoders		= nullptr,
 		.pfnGetWeaponData			= nullptr,
