@@ -19,6 +19,7 @@ import Task;
 import Uranus;
 import VTFH;
 import ZBot;
+import Studio;
 
 import BPW;
 
@@ -45,7 +46,7 @@ void fw_GameInit_Post() noexcept
 	FileSystem::Init();
 	Engine::Init();	// Get engine build number
 	TaskScheduler::Policy() = ESchedulerPolicy::UNORDERED;	// It is very likely that we don't need to have it sorted.
-	RetrieveServerStatics();
+	RetrieveServerVariables();
 
 	DeployInlineHooks();
 
@@ -69,6 +70,7 @@ void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) 
 	RetrieveConditionZeroVar();
 	Decal::RetrieveIndices();
 	ZBot::RetrieveManager();
+	RetrieveEngineStudio();
 
 	DeployRoundHook();	// Do it after retrieving gamerules
 }
