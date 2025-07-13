@@ -20,6 +20,7 @@ import Models;
 import PlayerItem;
 import Prefab;
 import Query;
+import Resources;
 import Task;
 import Uranus;
 import WinAPI;
@@ -63,7 +64,7 @@ enum EWeaponTaskFlags2 : std::uint64_t
 	TASK_ALL_MATERIALIZED = TASK_ALL_WEAKS << 8,
 };
 
-extern edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol, bool bShootingLeft) noexcept;
+extern edict_t* CreateGunSmoke(CBasePlayer* pPlayer, Vector const& vecMuzzleOfs, bool bIsPistol, bool bShootingLeft) noexcept;
 
 extern Vector2D CS_FireBullets3(
 	CBasePlayer* pAttacker, CBasePlayerItem* pInflictor,
@@ -72,10 +73,10 @@ extern Vector2D CS_FireBullets3(
 
 [[nodiscard]] static auto GetAnimsFromKeywords(
 	string_view szModel, span<string_view const> rgszKeywords,
-	span<span<string_view const> const> rgrgszMustInc = {}, span<string_view const> rgszMustExc = {}) noexcept -> vector<seq_timing_t const*>
+	span<span<string_view const> const> rgrgszMustInc = {}, span<string_view const> rgszMustExc = {}) noexcept -> vector<TranscriptedSequence const*>
 {
 	// #UPDATE_AT_CPP26 transparant at
-	auto& ModelInfo = gStudioInfo.find(szModel)->second;
+	auto const ModelInfo = Resource::GetStudioTranscription(szModel);
 	static auto const fnCaselessCmp = [](char lhs, char rhs) static noexcept
 	{
 		if (lhs >= 'A' && lhs <= 'Z')
@@ -87,13 +88,15 @@ extern Vector2D CS_FireBullets3(
 	};
 
 	auto const fnFilter =
-		[&](std::remove_cvref_t<decltype(ModelInfo)>::value_type const& pr) noexcept
+		[&](TranscriptedSequence const& Seq) noexcept
 		{
+			auto const szLabel = string_view{ Seq.m_szLabel };
+
 			// At least one of the keywords must presented.
 			bool bContains = false;
 			for (auto&& szKeyword : rgszKeywords)
 			{
-				if (std::ranges::contains_subrange(pr.first, szKeyword, fnCaselessCmp))
+				if (std::ranges::contains_subrange(szLabel, szKeyword, fnCaselessCmp))
 				{
 					bContains = true;
 					break;
@@ -106,7 +109,7 @@ extern Vector2D CS_FireBullets3(
 			// All of the blacklist must not be there.
 			for (auto&& szBad : rgszMustExc)
 			{
-				if (std::ranges::contains_subrange(pr.first, szBad, fnCaselessCmp))
+				if (std::ranges::contains_subrange(szLabel, szBad, fnCaselessCmp))
 					return false;
 			}
 
@@ -121,7 +124,7 @@ extern Vector2D CS_FireBullets3(
 				bContains = rgszMustInc.empty();
 				for (auto&& szReq : rgszMustInc)
 				{
-					if (std::ranges::contains_subrange(pr.first, szReq, fnCaselessCmp))
+					if (std::ranges::contains_subrange(szLabel, szReq, fnCaselessCmp))
 					{
 						bContains = true;
 						break;
@@ -136,9 +139,9 @@ extern Vector2D CS_FireBullets3(
 		};
 
 	return
-		ModelInfo
+		ModelInfo->m_Sequences
 		| std::views::filter(fnFilter)
-		| std::views::transform([](auto& pr) static noexcept { return std::addressof(pr.second); })
+		| std::views::transform([](auto&& a) static noexcept { return std::addressof(a); })
 		| std::ranges::to<std::vector>();
 }
 
@@ -155,6 +158,33 @@ extern Vector2D CS_FireBullets3(
 	}
 
 	return rgszSoundPaths;
+}
+
+[[nodiscard]] static auto BuildViewModelExtEvs(string_view szModel) noexcept -> std::map<std::string_view, std::vector<mstudioevent_t const*>, sv_iless_t>
+{
+	std::map<std::string_view, std::vector<mstudioevent_t const*>, sv_iless_t> res{};
+
+	// #UPDATE_AT_CPP26 transparant at
+	auto const ModelInfo = Resource::GetStudioTranscription(szModel);
+
+	for (auto&& Sequence : ModelInfo->m_Sequences)
+	{
+		for (auto&& Event : Sequence.m_Events)
+		{
+			switch (Event.event)
+			{
+			case 6001:	// Gun muzzle smoke
+			case 6002:	// Shell
+				res[Sequence.m_szLabel].push_back(std::addressof(Event));
+				break;
+
+			default:
+				break;
+			}
+		}
+	}
+
+	return std::move(res);
 }
 
 template <typename CWeapon, typename AnimDat>
@@ -190,12 +220,12 @@ struct CAnimationGroup final
 	}
 
 #ifdef _DEBUG
-	static inline vector<seq_timing_t const*> const* m_pRegulars{};
-	static inline vector<seq_timing_t const*> const* m_pUnsil{};
-	static inline vector<seq_timing_t const*> const* m_pShield{};
+	static inline vector<TranscriptedSequence const*> const* m_pRegulars{};
+	static inline vector<TranscriptedSequence const*> const* m_pUnsil{};
+	static inline vector<TranscriptedSequence const*> const* m_pShield{};
 #endif
 
-	static auto operator()(CBasePlayerWeapon* pWeapon) noexcept -> seq_timing_t const*
+	static auto operator()(CBasePlayerWeapon* pWeapon) noexcept -> TranscriptedSequence const*
 	{
 		static auto const REGULAR{
 			GetAnimsFromKeywords(CWeapon::MODEL_V, AnimDat::KEYWORD, std::array{ GetGenericInclusions(), }, GetGenericExclusions())
@@ -250,6 +280,7 @@ template <typename T>
 struct CBasePistol : CPrefabWeapon
 {
 	uint16_t m_usFireEv{}, m_usFireEv2{};
+	static inline decltype(::BuildViewModelExtEvs("")) m_ViewModelExtEvs, m_ShieldedViewModelExtEvs;
 
 	qboolean UseDecrement() noexcept override { return true; }
 	int iItemSlot() noexcept override { return T::DAT_SLOT + 1; }
@@ -299,14 +330,18 @@ struct CBasePistol : CPrefabWeapon
 	void Precache() noexcept override
 	{
 		g_engfuncs.pfnPrecacheModel(T::MODEL_V);
-		GoldSrc::CacheStudioModelInfo(T::MODEL_V);
+		Resource::Transcript(T::MODEL_V);
+		m_ViewModelExtEvs = ::BuildViewModelExtEvs(CRTP()->MODEL_V);
+
 		g_engfuncs.pfnPrecacheModel(T::MODEL_W);
 		g_engfuncs.pfnPrecacheModel(T::MODEL_P);
 
 		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
 		{
 			g_engfuncs.pfnPrecacheModel(T::MODEL_V_SHIELD);
-			GoldSrc::CacheStudioModelInfo(T::MODEL_V_SHIELD);
+			Resource::Transcript(T::MODEL_V_SHIELD);
+			m_ShieldedViewModelExtEvs = ::BuildViewModelExtEvs(CRTP()->MODEL_V_SHIELD);
+
 			g_engfuncs.pfnPrecacheModel(T::MODEL_P_SHIELD);
 		}
 
@@ -353,7 +388,7 @@ struct CBasePistol : CPrefabWeapon
 		}
 	}
 
-	Task Task_Deploy(seq_timing_t const* pAnim) noexcept
+	Task Task_Deploy(TranscriptedSequence const* pAnim) noexcept
 	{
 		if (!CanDeploy())
 			co_return;
@@ -374,8 +409,8 @@ struct CBasePistol : CPrefabWeapon
 			// P model for shield was put in UpdateThirdPersonModel()
 		}
 
-		m_pPlayer->m_flNextAttack = pAnim->m_total_length;
-		m_flTimeWeaponIdle = pAnim->m_total_length;
+		m_pPlayer->m_flNextAttack = pAnim->GetTotalLength();
+		m_flTimeWeaponIdle = pAnim->GetTotalLength();
 		m_flLastFireTime = 0.0f;
 		m_flDecreaseShotsFired = gpGlobals->time;
 
@@ -612,7 +647,7 @@ struct CBasePistol : CPrefabWeapon
 
 	using CPrefabWeapon::SendWeaponAnim;	// Import the original one as well.
 	// Addition: send wpn anim of the exact name. Won't random from a pool.
-	inline auto SendWeaponAnim(string_view anim, int iBody = 0, bool bSkipLocal = false) const noexcept -> seq_timing_t const*
+	inline auto SendWeaponAnim(string_view anim, int iBody = 0, bool bSkipLocal = false) const noexcept -> TranscriptedSequence const*
 	{
 		string_view szViewModel{ T::MODEL_V };
 
@@ -624,17 +659,16 @@ struct CBasePistol : CPrefabWeapon
 
 		try
 		{
-			// #UPDATE_AT_CPP26 transparant at
-			auto const& AnimInfo =
-				gStudioInfo.find(szViewModel)->second.find(anim)->second;
+			auto const pSeq =
+				Resource::GetStudioTranscription(szViewModel)->AtSequence(anim);
 
-			m_pPlayer->pev->weaponanim = AnimInfo.m_iSeqIdx;
+			m_pPlayer->pev->weaponanim = pSeq->m_index;
 
 			if (bSkipLocal && g_engfuncs.pfnCanSkipPlayer(m_pPlayer->edict()))
-				return std::addressof(AnimInfo);
+				return pSeq;
 
-			gmsgWeaponAnim::Send(m_pPlayer->edict(), AnimInfo.m_iSeqIdx, iBody);
-			return std::addressof(AnimInfo);
+			gmsgWeaponAnim::Send(m_pPlayer->edict(), pSeq->m_index, iBody);
+			return pSeq;
 		}
 		catch (...)
 		{
@@ -650,20 +684,20 @@ struct CBasePistol : CPrefabWeapon
 		{
 			// It's absolutely none of our business that whether can we attack or so.
 			// That's something should be decided in other tasks.
-			co_await pAnim->m_total_length;
+			co_await pAnim->GetTotalLength();
 		}
 
 		co_return;
 	}
 
-	Task Task_WeaponAnim(seq_timing_t const* pAnim, int iBody = 0) const noexcept
+	Task Task_WeaponAnim(TranscriptedSequence const* pAnim, int iBody = 0) const noexcept
 	{
 		if (pAnim)
 		{
-			m_pPlayer->pev->weaponanim = pAnim->m_iSeqIdx;
-			gmsgWeaponAnim::Send(m_pPlayer->edict(), pAnim->m_iSeqIdx, iBody);
+			m_pPlayer->pev->weaponanim = pAnim->m_index;
+			gmsgWeaponAnim::Send(m_pPlayer->edict(), pAnim->m_index, iBody);
 
-			co_await pAnim->m_total_length;
+			co_await pAnim->GetTotalLength();
 		}
 
 		co_return;
@@ -734,7 +768,7 @@ struct CBasePistol : CPrefabWeapon
 					);
 					assert(pSilencerAnim != nullptr);
 
-					co_await pSilencerAnim->m_total_length;
+					co_await pSilencerAnim->GetTotalLength();
 
 					// Invert the flag.
 					self->m_iWeaponState ^= WPNSTATE_USP_SILENCED;
@@ -814,13 +848,13 @@ struct CBasePistol : CPrefabWeapon
 				co_return;
 		}
 
-		EjectBrass(bShootingLeft);
+		//EjectBrass(bShootingLeft);
 
 		co_await TaskScheduler::NextFrame::Rank[0];
 		if (!m_pPlayer->IsAlive())
 			co_return;
 
-		CreateGunSmoke(m_pPlayer, requires { T::FLAG_IS_PISTOL; }, bShootingLeft);	// CS got right hand issue.
+		//CreateGunSmoke(m_pPlayer, requires { T::FLAG_IS_PISTOL; }, bShootingLeft);	// CS got right hand issue.
 	}
 
 	Task Task_BurstFire() noexcept
@@ -966,7 +1000,7 @@ struct CBasePistol : CPrefabWeapon
 			}
 		}
 
-		m_flTimeWeaponIdle = pShootingAnim->m_total_length;	// Change it to anim time of shooting anim.
+		m_flTimeWeaponIdle = pShootingAnim->GetTotalLength();	// Change it to anim time of shooting anim.
 		m_Scheduler.Enroll(Task_WeaponAnim(pShootingAnim), TASK_ANIMATION, true);
 
 		/*
@@ -990,6 +1024,8 @@ struct CBasePistol : CPrefabWeapon
 		CRTP()->EFFC_RECOIL();
 
 		m_Scheduler.Enroll(Task_ShootingEffects(bShootingLeft));	// Can't be overwrite by others.
+
+		// Extended model event dispatching.
 	}
 
 	void PrimaryAttack() noexcept override
@@ -1026,7 +1062,7 @@ struct CBasePistol : CPrefabWeapon
 		return true;
 	}
 
-	Task Task_Reload(seq_timing_t const* pReloadAnim) noexcept
+	Task Task_Reload(TranscriptedSequence const* pReloadAnim) noexcept
 	{
 		if (m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType] <= 0)
 			co_return;
@@ -1035,16 +1071,19 @@ struct CBasePistol : CPrefabWeapon
 		if (!j)
 			co_return;
 
-		m_pPlayer->m_flNextAttack = pReloadAnim->m_fz_end;
+		auto const flAnimTotalLen = pReloadAnim->GetTotalLength();
+		auto const flAnimFreezeEnds = pReloadAnim->GetTimeAfterLastWav() == -1 ? flAnimTotalLen : pReloadAnim->GetTimeAfterLastWav();
+
+		m_pPlayer->m_flNextAttack = flAnimFreezeEnds;
 
 		ReloadSound();
-		SendWeaponAnim(pReloadAnim->m_iSeqIdx);
+		SendWeaponAnim(pReloadAnim->m_index);
 
 		m_fInReload = true;
-		m_flTimeWeaponIdle = pReloadAnim->m_total_length;
+		m_flTimeWeaponIdle = flAnimTotalLen;
 
 		// complete the reload.
-		co_await pReloadAnim->m_fz_end;
+		co_await flAnimFreezeEnds;
 
 		// Add them to the clip
 		m_iClip += j;
@@ -1054,7 +1093,7 @@ struct CBasePistol : CPrefabWeapon
 		m_fInReload = false;
 
 		// Block the idle anim.
-		co_await std::max(0.f, pReloadAnim->m_total_length - pReloadAnim->m_fz_end);
+		co_await std::max(0.f, flAnimTotalLen - flAnimFreezeEnds);
 	}
 
 	void Reload() noexcept override
@@ -1101,14 +1140,14 @@ struct CBasePistol : CPrefabWeapon
 				pAnimInfo = OneEmptyAnimSelector(this);
 		}
 
-		m_flTimeWeaponIdle = std::max(5.f, pAnimInfo->m_total_length);
+		m_flTimeWeaponIdle = std::max(5.f, pAnimInfo->GetTotalLength());
 		m_Scheduler.Enroll(
-			[](seq_timing_t const* pAnimInfo, CBasePlayer* pPlayer, int iBody = 0) static noexcept -> Task
+			[](TranscriptedSequence const* pSeq, CBasePlayer* pPlayer, int iBody = 0) static noexcept -> Task
 			{
-				pPlayer->pev->weaponanim = pAnimInfo->m_iSeqIdx;
-				gmsgWeaponAnim::Send(pPlayer->edict(), pAnimInfo->m_iSeqIdx, iBody);
+				pPlayer->pev->weaponanim = pSeq->m_index;
+				gmsgWeaponAnim::Send(pPlayer->edict(), pSeq->m_index, iBody);
 
-				co_await std::max(5.f, pAnimInfo->m_total_length);
+				co_await std::max(5.f, pSeq->GetTotalLength());
 			}(pAnimInfo, m_pPlayer),
 			TASK_ANIMATION,
 			true

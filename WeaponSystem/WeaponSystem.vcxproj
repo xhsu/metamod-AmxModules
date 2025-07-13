@@ -139,6 +139,7 @@
     <ClCompile Include="Server.ixx" />
     <ClCompile Include="Studio.ixx" />
     <ClCompile Include="Tutor.cpp" />
+    <ClCompile Include="ViewModelEvents.ixx" />
     <ClCompile Include="WpnIdAllocator.ixx" />
   </ItemGroup>
   <ItemGroup>

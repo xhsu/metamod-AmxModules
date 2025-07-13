@@ -4,15 +4,15 @@ import hlsdk;
 import UtlRandom;
 import UtlString;
 
+import CBase;
+import Message;
 import Prefab;
 import Resources;
 import Server;
 import Sprite;
+import Studio;
 import Task;
 import WinAPI;
-import Studio;
-import CBase;
-import Message;
 
 
 enum ETaskFlags : std::uint64_t
@@ -176,12 +176,11 @@ struct CGunSmoke : Prefab_t
 		"sprites/pistol_smoke2.spr",
 	};
 
-	CGunSmoke(CBasePlayer* pPlayer, bool bIsPistol) noexcept
-		: m_pPlayer{ pPlayer }, m_bIsPistol{ bIsPistol } {
-		g_engfuncs.pfnGetAttachment(pPlayer->edict(), 0, m_vecWorldGunshotSpot, nullptr);
-		auto&&[vec, ang] = GetAttachment2(g_engfuncs.pfnModelIndex(STRING(pPlayer->pev->viewmodel)), 0, 0, 0);
-		m_vecViewModelMuzzle = vec;
-		UTIL_Random();
+	CGunSmoke(CBasePlayer* pPlayer, Vector const& vecMuzzleOfs, bool bIsPistol, bool bShootingLeft) noexcept
+		: m_pPlayer{ pPlayer }, m_bIsPistol{ bIsPistol },
+		m_vecViewModelMuzzle{ vecMuzzleOfs }
+	{
+		g_engfuncs.pfnGetAttachment(pPlayer->edict(), bShootingLeft ? 1 : 0, m_vecWorldGunshotSpot, nullptr);
 	}
 
 	void Spawn() noexcept override
@@ -209,34 +208,29 @@ struct CGunSmoke : Prefab_t
 		//m_Scheduler.Enroll(Task_TellMeWhere(m_pPlayer, m_vecViewModelMuzzle));
 	}
 
-	static CGunSmoke* Create(CBasePlayer* pPlayer, bool bIsPistol, bool bShootingLeft) noexcept
-	{
-		auto const [pEdict, pPrefab]
-			= UTIL_CreateNamedPrefab<CGunSmoke>(pPlayer, bIsPistol);
-
-		auto&& [fwd, right, up]
-			= (pPlayer->pev->v_angle + pPlayer->pev->punchangle).AngleVectors();
-
-		if (!bShootingLeft)
-			pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * pPrefab->m_vecViewModelMuzzle.z + fwd * pPrefab->m_vecViewModelMuzzle.x + right * pPrefab->m_vecViewModelMuzzle.y;
-		else
-			pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * pPrefab->m_vecViewModelMuzzle.z + fwd * pPrefab->m_vecViewModelMuzzle.x - right * pPrefab->m_vecViewModelMuzzle.y;
-
-		pPrefab->Spawn();
-		pPrefab->pev->nextthink = 0.1f;
-
-		return pPrefab;
-	}
-
 	CBasePlayer* m_pPlayer{};
 	bool m_bIsPistol{};
-	Vector m_vecWorldGunshotSpot{};	// Attachment #0
-	Vector m_vecViewModelMuzzle{};	// Attachment #0
+	Vector m_vecWorldGunshotSpot{};	// Attachment #0 - on player model.
+	Vector m_vecViewModelMuzzle{};	// Attachment #0 - on view model.
 };
 
-edict_t* CreateGunSmoke(CBasePlayer* pPlayer, bool bIsPistol, bool bShootingLeft) noexcept
+edict_t* CreateGunSmoke(CBasePlayer* pPlayer, Vector const& vecMuzzleOfs, bool bIsPistol, bool bShootingLeft) noexcept
 {
-	return CGunSmoke::Create(pPlayer, bIsPistol, bShootingLeft)->edict();
+	auto const [pEdict, pPrefab]
+		= UTIL_CreateNamedPrefab<CGunSmoke>(pPlayer, vecMuzzleOfs, bIsPistol, bShootingLeft);
+
+	auto&& [fwd, right, up]
+		= (pPlayer->pev->v_angle + pPlayer->pev->punchangle).AngleVectors();
+
+	if (!bShootingLeft)
+		pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * pPrefab->m_vecViewModelMuzzle.z + fwd * pPrefab->m_vecViewModelMuzzle.x + right * pPrefab->m_vecViewModelMuzzle.y;
+	else
+		pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * pPrefab->m_vecViewModelMuzzle.z + fwd * pPrefab->m_vecViewModelMuzzle.x - right * pPrefab->m_vecViewModelMuzzle.y;
+
+	pPrefab->Spawn();
+	pPrefab->pev->nextthink = 0.1f;
+
+	return pEdict;
 }
 
 struct CSnowSteam : Prefab_t

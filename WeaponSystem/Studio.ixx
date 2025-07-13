@@ -11,8 +11,8 @@ import std.compat;
 #endif
 import hlsdk;
 
-import Uranus;
 import Server;
+import Uranus;
 
 import UtlHook;
 

@@ -195,6 +195,9 @@
     <ClCompile Include="Studio.ixx">
       <Filter>CSDK.Ext</Filter>
     </ClCompile>
+    <ClCompile Include="ViewModelEvents.ixx">
+      <Filter>Sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp">
