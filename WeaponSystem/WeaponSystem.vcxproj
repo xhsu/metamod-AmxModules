@@ -137,6 +137,7 @@
     <ClCompile Include="Round.cpp" />
     <ClCompile Include="Effect.Surface.cpp" />
     <ClCompile Include="Server.ixx" />
+    <ClCompile Include="Studio.ixx" />
     <ClCompile Include="Tutor.cpp" />
     <ClCompile Include="WpnIdAllocator.ixx" />
   </ItemGroup>
