@@ -127,6 +127,7 @@
     <ClCompile Include="DllFunc.Command.cpp" />
     <ClCompile Include="DllFunc.cpp" />
     <ClCompile Include="DllFunc.PM.cpp" />
+    <ClCompile Include="DynExpr.cpp" />
     <ClCompile Include="Effects.cpp" />
     <ClCompile Include="FireBullets.cpp" />
     <ClCompile Include="Hook.cpp" />
@@ -150,6 +151,7 @@
     <ClInclude Include="..\..\metamod-p\hlsdk\engine\hlsdk.customentity.hpp" />
     <ClInclude Include="..\..\metamod-p\hlsdk\engine\hlsdk.engine.hpp" />
     <ClInclude Include="..\..\metamod-p\metamod\metamod_api.hpp" />
+    <ClInclude Include="DynExpr.hpp" />
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="..\..\metamod-p\hlsdk\msvc\hlsdk.debugging.natvis" />

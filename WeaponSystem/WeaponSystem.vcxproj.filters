@@ -198,6 +198,9 @@
     <ClCompile Include="ViewModelEvents.ixx">
       <Filter>Sources</Filter>
     </ClCompile>
+    <ClCompile Include="DynExpr.cpp">
+      <Filter>CSDK.Ext</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\metamod-p\hlsdk\dlls\hlsdk.sv.animation.hpp">
@@ -220,6 +223,9 @@
     </ClInclude>
     <ClInclude Include="..\..\metamod-p\metamod\metamod_api.hpp">
       <Filter>API.Misc</Filter>
+    </ClInclude>
+    <ClInclude Include="DynExpr.hpp">
+      <Filter>CSDK.Ext</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

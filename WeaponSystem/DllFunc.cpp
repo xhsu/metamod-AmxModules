@@ -37,6 +37,10 @@ extern void RestoreInlineHooks() noexcept;
 extern void DeployRoundHook() noexcept;
 //
 
+// DynExpr.cpp
+extern void InitializeDynExpr() noexcept;
+//
+
 static bool g_bShouldPrecache = true;
 
 
@@ -47,6 +51,7 @@ void fw_GameInit_Post() noexcept
 	Engine::Init();	// Get engine build number
 	TaskScheduler::Policy() = ESchedulerPolicy::UNORDERED;	// It is very likely that we don't need to have it sorted.
 	RetrieveServerVariables();
+	InitializeDynExpr();
 
 	DeployInlineHooks();
 
