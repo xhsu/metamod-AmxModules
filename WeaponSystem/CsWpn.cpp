@@ -21,6 +21,7 @@ import PlayerItem;
 import Prefab;
 import Query;
 import Resources;
+import Studio;
 import Task;
 import Uranus;
 import WinAPI;
@@ -780,17 +781,18 @@ struct CBasePistol : CPrefabWeapon
 		}
 	}
 
-	void EjectBrass(bool bShootingLeft) const noexcept
+	void EjectBrass(Vector const &vecEjectionPortOfs, bool bShootingLeft) const noexcept
 	{
 		auto&& [fwd, right, up] = m_pPlayer->pev->v_angle.AngleVectors();
 		auto constexpr soundType = (T::PROTOTYPE_ID == WEAPON_XM1014 || T::PROTOTYPE_ID == WEAPON_M3) ? TE_BOUNCE_SHOTSHELL : TE_BOUNCE_SHELL;
-		auto const vecOrigin = m_pPlayer->pev->origin + m_pPlayer->pev->view_ofs + up * -9 + fwd * 16;
+		auto const vecOrigin = m_pPlayer->pev->origin + m_pPlayer->pev->view_ofs
+			+ up * vecEjectionPortOfs.z + fwd * vecEjectionPortOfs.x + right * vecEjectionPortOfs.y;
 
 		if (bShootingLeft)
 		{
 			MsgPVS(SVC_TEMPENTITY, vecOrigin);
 			WriteData(TE_MODEL);
-			WriteData(vecOrigin + right * -7);
+			WriteData(vecOrigin);
 			WriteData(
 				m_pPlayer->pev->velocity
 					+ UTIL_Random<float>(50, 70) * right
@@ -1026,6 +1028,46 @@ struct CBasePistol : CPrefabWeapon
 		m_Scheduler.Enroll(Task_ShootingEffects(bShootingLeft));	// Can't be overwrite by others.
 
 		// Extended model event dispatching.
+
+		auto pExtEvs = std::addressof(CRTP()->m_ViewModelExtEvs);
+		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
+		{
+			if (CRTP()->m_pPlayer->HasShield())
+				pExtEvs = std::addressof(CRTP()->m_ShieldedViewModelExtEvs);
+		}
+
+		for (auto&& pEvent : pExtEvs->at(pShootingAnim->m_szLabel))
+		{
+			switch (pEvent->event)
+			{
+			case 6001:
+			{
+				auto const iAttachment = std::atoi(pEvent->options);
+				auto const vecMuzOfs = UTIL_GetAttachmentOffset(
+					STRING(m_pPlayer->pev->viewmodel),
+					(unsigned)iAttachment,
+					pShootingAnim->m_index,
+					(float)pEvent->frame
+				);
+				CreateGunSmoke(m_pPlayer, vecMuzOfs, requires { T::FLAG_IS_PISTOL; }, bShootingLeft);
+				break;
+			}
+			case 6002:
+			{
+				auto const iAttachment = std::atoi(pEvent->options);
+				auto const vecEjtPortOfs = UTIL_GetAttachmentOffset(
+					STRING(m_pPlayer->pev->viewmodel),
+					(unsigned)iAttachment,
+					pShootingAnim->m_index,
+					(float)pEvent->frame
+				);
+				EjectBrass(vecEjtPortOfs, bShootingLeft);
+				break;
+			}
+			default:
+				break;
+			}
+		}
 	}
 
 	void PrimaryAttack() noexcept override
