@@ -23,6 +23,36 @@ export auto UTIL_Split(std::string_view const& s, char const* delimiters) noexce
 	return ret;
 }
 
+export [[nodiscard]] constexpr auto UTIL_SplitByBrackets(std::string_view s, char cLeft = '[', char cRight = ']') noexcept -> std::expected<std::vector<std::string_view>, std::string_view>
+{
+	std::vector<std::string_view> res{};
+
+	int iDepth = 0;
+	for (std::ptrdiff_t pos = -1; auto&& c : s)
+	{
+		if (c == cLeft)
+		{
+			++iDepth;
+
+			if (iDepth == 1)
+				pos = &c - s.data() + 1;
+		}
+
+		if (c == cRight)
+		{
+			--iDepth;
+
+			if (iDepth == 0)
+				res.emplace_back(s.data() + pos, &c);
+		}
+	}
+
+	if (iDepth != 0)
+		return std::unexpected("Unmatched brackets");
+
+	return std::move(res);
+}
+
 export template <typename T>
 constexpr T UTIL_StrToNum(const std::string_view& sz) noexcept
 {
