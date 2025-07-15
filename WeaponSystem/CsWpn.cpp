@@ -188,6 +188,9 @@ extern Vector2D CS_FireBullets3(
 	return std::move(res);
 }
 
+extern auto RunDynExpr(string_view szExpr) noexcept -> std::expected<std::any, string>;
+extern void DynExprBindVector(string_view name, Vector const& vec) noexcept;
+
 template <typename CWeapon, typename AnimDat>
 struct CAnimationGroup final
 {
@@ -781,44 +784,44 @@ struct CBasePistol : CPrefabWeapon
 		}
 	}
 
-	void EjectBrass(Vector const &vecEjectionPortOfs, bool bShootingLeft) const noexcept
+	void EjectBrass(Vector const &vecEjectionPortOfs, Vector const& vecVel) const noexcept
 	{
 		auto&& [fwd, right, up] = m_pPlayer->pev->v_angle.AngleVectors();
 		auto constexpr soundType = (T::PROTOTYPE_ID == WEAPON_XM1014 || T::PROTOTYPE_ID == WEAPON_M3) ? TE_BOUNCE_SHOTSHELL : TE_BOUNCE_SHELL;
 		auto const vecOrigin = m_pPlayer->pev->origin + m_pPlayer->pev->view_ofs
 			+ up * vecEjectionPortOfs.z + fwd * vecEjectionPortOfs.x + right * vecEjectionPortOfs.y;
 
-		if (bShootingLeft)
-		{
+		//if (bShootingLeft)
+		//{
 			MsgPVS(SVC_TEMPENTITY, vecOrigin);
 			WriteData(TE_MODEL);
 			WriteData(vecOrigin);
 			WriteData(
 				m_pPlayer->pev->velocity
-					+ UTIL_Random<float>(50, 70) * right
-					+ UTIL_Random<float>(100, 150) * up
-					+ 25 * fwd
+					+ vecVel.y * right
+					+ vecVel.z * up
+					+ vecVel.x * fwd
 			);
 			WriteData(msg_angle_t{ pev->angles.yaw });
 			WriteData((uint16_t)m_iShellId);
 			WriteData(soundType);
 			WriteData(static_cast<uint8_t>(50));
 			MsgEnd();
-		}
-		else
-		{
-			gmsgBrass::Region<MSG_PVS>(vecOrigin,
-				vecOrigin,
-				m_pPlayer->pev->velocity
-					+ UTIL_Random<float>(50, 70) * right
-					+ UTIL_Random<float>(100, 150) * up
-					+ 25 * fwd,
-				pev->angles.yaw,
-				m_iShellId,
-				soundType,
-				(std::uint8_t)m_pPlayer->entindex()
-			);
-		}
+		//}
+		//else
+		//{
+		//	gmsgBrass::Region<MSG_PVS>(vecOrigin,
+		//		vecOrigin,
+		//		m_pPlayer->pev->velocity
+		//			+ UTIL_Random<float>(50, 70) * right
+		//			+ UTIL_Random<float>(100, 150) * up
+		//			+ 25 * fwd,
+		//		pev->angles.yaw,
+		//		m_iShellId,
+		//		soundType,
+		//		(std::uint8_t)m_pPlayer->entindex()
+		//	);
+		//}
 	}
 
 	Task Task_ShootingEffects(bool bShootingLeft) const noexcept
@@ -1036,36 +1039,113 @@ struct CBasePistol : CPrefabWeapon
 				pExtEvs = std::addressof(CRTP()->m_ShieldedViewModelExtEvs);
 		}
 
-		for (auto&& pEvent : pExtEvs->at(pShootingAnim->m_szLabel))
+		if (auto const it = pExtEvs->find(pShootingAnim->m_szLabel); it != pExtEvs->cend())
 		{
-			switch (pEvent->event)
+			for (auto&& pEvent : it->second)
 			{
-			case 6001:
-			{
-				auto const iAttachment = std::atoi(pEvent->options);
-				auto const vecMuzOfs = UTIL_GetAttachmentOffset(
-					STRING(m_pPlayer->pev->viewmodel),
-					(unsigned)iAttachment,
-					pShootingAnim->m_index,
-					(float)pEvent->frame
-				);
-				CreateGunSmoke(m_pPlayer, vecMuzOfs, requires { T::FLAG_IS_PISTOL; }, bShootingLeft);
-				break;
-			}
-			case 6002:
-			{
-				auto const iAttachment = std::atoi(pEvent->options);
-				auto const vecEjtPortOfs = UTIL_GetAttachmentOffset(
-					STRING(m_pPlayer->pev->viewmodel),
-					(unsigned)iAttachment,
-					pShootingAnim->m_index,
-					(float)pEvent->frame
-				);
-				EjectBrass(vecEjtPortOfs, bShootingLeft);
-				break;
-			}
-			default:
-				break;
+				switch (pEvent->event)
+				{
+				case 6001:
+				{
+					m_Scheduler.Enroll(
+						[](CBasePlayer* pPlayer,
+							mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim,
+							bool bShootingLeft) static noexcept -> Task
+						{
+							co_await (pEvent->frame / pShootingAnim->m_fps);
+
+							auto const iAttachment = std::atoi(pEvent->options);
+							auto const vecMuzOfs = UTIL_GetAttachmentOffset(
+								STRING(pPlayer->pev->viewmodel),
+								(unsigned)iAttachment,
+								pShootingAnim->m_index,
+								(float)pEvent->frame
+							);
+							CreateGunSmoke(pPlayer, vecMuzOfs, requires { T::FLAG_IS_PISTOL; }, bShootingLeft);
+
+							//auto&& [fwd, right, up] = pPlayer->pev->v_angle.AngleVectors();
+							//auto const vecOrigin = pPlayer->pev->origin + pPlayer->pev->view_ofs;
+							//
+							//for (int i = 0; i < 10; ++i, co_await 0.1f)
+							//{
+							//	MsgBroadcast(SVC_TEMPENTITY);
+							//	WriteData(TE_SPARKS);
+							//	WriteData(vecOrigin + fwd * vecMuzOfs.x + right * vecMuzOfs.y + up * vecMuzOfs.z);
+							//	MsgEnd();
+							//}
+						}(m_pPlayer, pEvent, pShootingAnim, bShootingLeft)
+					);
+					break;
+				}
+				case 6002:
+				{
+					m_Scheduler.Enroll(
+						[](CBasePistol* pWeapon, CBasePlayer* pPlayer,
+							mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim,
+							bool bShootingLeft) static noexcept -> Task
+						{
+							co_await(pEvent->frame / pShootingAnim->m_fps);
+
+							auto const EvOption = UTIL_SplitByBrackets(pEvent->options)
+								.or_else([&](string_view s) noexcept -> std::expected<std::vector<std::string_view>, std::string_view> {
+									g_engfuncs.pfnServerPrint(
+										std::format("{}: {}: {}\n",
+											STRING(pPlayer->pev->viewmodel), pShootingAnim->m_szLabel , s
+										).c_str()
+									);
+									return std::unexpected(std::move(s));
+								});
+
+							if (!EvOption)
+								co_return;
+
+							auto const QcVeclocity = RunDynExpr(EvOption->at(1))
+								.and_then([&](std::any a) noexcept -> std::expected<Vector, std::string> {
+									try {
+										return std::any_cast<Vector>(std::move(a));
+									}
+									catch (const std::exception& e) {
+										return std::unexpected(e.what());
+									}
+								})
+								.or_else([&](string s) noexcept -> std::expected<Vector, std::string> {
+									g_engfuncs.pfnServerPrint(
+										std::format("{}: {}: {}\n",
+											STRING(pPlayer->pev->viewmodel), pShootingAnim->m_szLabel , s
+										).c_str()
+									);
+									return std::unexpected(std::move(s));
+								});
+
+							if (!QcVeclocity)
+								co_return;
+
+							auto const iAttachment = UTIL_StrToNum<unsigned>(EvOption->at(0));	// arg0: attachment idx.
+							auto const vecEjtPortOfs = UTIL_GetAttachmentOffset(
+								STRING(pPlayer->pev->viewmodel),
+								iAttachment,
+								pShootingAnim->m_index,
+								(float)pEvent->frame
+							);
+							pWeapon->EjectBrass(vecEjtPortOfs, *QcVeclocity);
+
+							//auto&& [fwd, right, up] = pPlayer->pev->v_angle.AngleVectors();
+							//auto const vecOrigin = pPlayer->pev->origin + pPlayer->pev->view_ofs;
+							//
+							//for (int i = 0; i < 10; ++i, co_await 0.1f)
+							//{
+							//	MsgBroadcast(SVC_TEMPENTITY);
+							//	WriteData(TE_SPARKS);
+							//	WriteData(vecOrigin + fwd * vecEjtPortOfs.x + right * vecEjtPortOfs.y + up * vecEjtPortOfs.z);
+							//	MsgEnd();
+							//}
+						}(this, m_pPlayer, pEvent, pShootingAnim, bShootingLeft)
+					);
+					break;
+				}
+				default:
+					break;
+				}
 			}
 		}
 	}

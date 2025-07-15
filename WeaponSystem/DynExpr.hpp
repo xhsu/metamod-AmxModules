@@ -231,9 +231,9 @@ private:
 };
 
 template <
-	auto fnIsCell,			/* Anything that considered as a single token is a cell. SIG: bool fnIsCell(string_view token, bool allow_sign); */
-	auto fnIsParenthesis,	/* Is the string considered as parenthesizes? */
-	auto fnIsOperator		/* Is the string considered as an operator? */
+	auto fnIsIdentifier,	/* Anything that considered as a single token is a cell. SIG: bool (*)(string_view token, bool allow_sign); */
+	auto fnIsParenthesis,	/* Is the string considered as parenthesizes? SIG: bool (*)(string_view token) */
+	auto fnIsOperator		/* Is the string considered as an operator? SIG: bool (*)(string_view token) */
 >
 constexpr auto Tokenizer(string_view s, string_view separators = " \t\f\v\r\n") noexcept -> expected<vector<string_view>, error_t>
 {
@@ -250,10 +250,10 @@ constexpr auto Tokenizer(string_view s, string_view separators = " \t\f\v\r\n") 
 		while (len > 0)
 		{
 			auto const token = s.substr(pos, len);
-			auto const bIsCell = fnIsCell(token, bAllowSignOnNext);	// Function must be a valid identifier itself first. Hence no need to add IsFunction() here.
-			auto const bIsOperator = fnIsOperator(token) || fnIsParenthesis(token);
+			auto const IsIdentifier = fnIsIdentifier(token, bAllowSignOnNext);	// Function must be a valid identifier itself first. Hence no need to add IsFunction() here.
+			auto const bIsOperator = fnIsOperator(token) || fnIsParenthesis(token) || token == ",";	// Must leave comma to SYA for separation.
 
-			if (bIsCell || bIsOperator)
+			if (IsIdentifier || bIsOperator)
 			{
 				ret.emplace_back(token);
 				bAllowSignOnNext = bIsOperator;	// If it is an operator prev, then a sign is allow. Things like: x ^ -2 (x to the power of neg 2)
@@ -289,40 +289,70 @@ constexpr auto Tokenizer(string_view s, string_view separators = " \t\f\v\r\n") 
 	return std::move(ret);	// Move into expected<>
 }
 
-template <
-	auto fnIsCell,				/* Anything that considered as a single token is a cell */
-	auto fnIsOperator,			/* Is the string considered as an operator? Remember in SYA, parenthesizes aren't operators. */	
-	auto fnIsFunction,			/* Is this cell actually an function? */
-	auto fnIsLeftAssociative,	/* Is the operator left associative? */
-	auto fnGetPrecedence		/* Get associativity of an operator. */
->
-constexpr auto ShuntingYardAlgorithm(span<string_view const> tokens) noexcept -> expected<vector<string_view>, string>
+struct op_context_t final
 {
-	vector<string_view> ret{};
-	vector<string_view> op_stack{};
+	string_view m_Prev{};
+	string_view m_Op{};
+	string_view m_Next{};
+	ptrdiff_t m_Position{ -1 };
+};
 
-	for (auto&& token : tokens)
+struct token_t final
+{
+	// This struct is created because I found it difficult to perform overload resolution
+	// if the operand count was lost during the SYA phase.
+	// For example, during type-only overload resolution, 'a-b' and '-b' will both have a perfect match,
+	// provided there are 2 arguments pushed onto the stack.
+
+	string_view m_Symbol{};
+	optional<uint8_t> m_OperandCount{};	// Doesn't exist means not operator.
+};
+
+template <
+	auto fnIsOperand,			/* Anything that considered as a single token is a cell SIG: bool (*)(string_view token) */
+	auto fnIsOperator,			/* Is the string considered as an operator? Remember in SYA, parenthesizes aren't operators. SIG: bool (*)(string_view token) */	
+	auto fnIsFunction,			/* Is this cell actually an function? SIG: bool (*)(string_view token) */
+	auto fnIsLeftAssociative,	/* Is the operator left associative? SIG: bool (*)(op_context_t const& OpContext, span<string_view const> tokens) */
+	auto fnGetPrecedence,		/* Get associativity of an operator. SIG: int (*)(op_context_t const& OpContext, span<string_view const> tokens) */
+	auto fnGetOperandCount		/* How many operand does this operator needed? SIG: optional<uint8_t> (*)(op_context_t const& OpContext, span<string_view const> tokens) */
+>
+constexpr auto ShuntingYardAlgorithm(span<string_view const> tokens) noexcept -> expected<vector<token_t>, string>
+{
+	vector<token_t> ret{};
+	vector<op_context_t> op_stack{};
+
+	for (ptrdiff_t i = 0; i < std::ssize(tokens); ++i)
 	{
-		bool const bIsCell = fnIsCell(token);
+		auto& token = tokens[i];
+
+		bool const bIsOperand = fnIsOperand(token);
 		bool const bIsFunction = fnIsFunction(token);
 		bool const bIsOperator = fnIsOperator(token);
 
 		// Is number?
-		if (bIsCell && !bIsFunction && !bIsOperator)
+		if (bIsOperand && !bIsFunction && !bIsOperator)
 		{
-			ret.push_back(token);
+			ret.push_back({ token, nullopt });
 		}
 
 		// Is a function?
 		else if (bIsFunction && !bIsOperator)
 		{
-			op_stack.push_back(token);
+			// Function doesn't need context like operator does.
+			op_stack.push_back({ "", token, "", i });
 		}
 
 		// operator? Remember that parenthesis is not an operator.
 		else if (bIsOperator)
 		{
-			auto const o1_preced = fnGetPrecedence(token);
+			op_context_t OpContext {
+				.m_Prev{ i == 0 ? "" : tokens[i - 1] },
+				.m_Op{ tokens[i]},
+				.m_Next{ i == (std::ssize(tokens) - 1) ? "" : tokens[i + 1]},
+				.m_Position = i,
+			};
+
+			auto const o1_preced = *fnGetPrecedence(OpContext, tokens);
 
 			/*
 			while (
@@ -333,41 +363,41 @@ constexpr auto ShuntingYardAlgorithm(span<string_view const> tokens) noexcept ->
 			push o1 onto the operator stack
 			*/
 
-			while (!op_stack.empty() && op_stack.back() != "("
-				&& (fnGetPrecedence(op_stack.back()) > o1_preced || (fnGetPrecedence(op_stack.back()) == o1_preced && fnIsLeftAssociative(token)))
+			while (!op_stack.empty() && op_stack.back().m_Op != "("
+				&& (*fnGetPrecedence(op_stack.back(), tokens) > o1_preced || (*fnGetPrecedence(op_stack.back(), tokens) == o1_preced && *fnIsLeftAssociative(OpContext, tokens)))
 				)
 			{
-				ret.push_back(op_stack.back());
+				ret.push_back({ op_stack.back().m_Op, fnGetOperandCount(op_stack.back(), tokens) });
 				op_stack.pop_back();
 			}
 
-			op_stack.push_back(token);
+			op_stack.push_back(OpContext);
 		}
 
 		// (
 		else if (token.length() == 1 && token[0] == '(')
-			op_stack.push_back("(");
+			op_stack.push_back({ "", "(", "", i });
 
 		// )
 		else if (token.length() == 1 && token[0] == ')')
 		{
 			try
 			{
-				while (op_stack.back() != "(")
+				while (op_stack.back().m_Op != "(")
 				{
 					// { assert the operator stack is not empty }
 					assert(!op_stack.empty());
 
 					// pop the operator from the operator stack into the output queue
 
-					ret.emplace_back(op_stack.back());
+					ret.push_back({ op_stack.back().m_Op, fnGetOperandCount(op_stack.back(), tokens) });
 					op_stack.pop_back();
 				}
 
 #ifdef _DEBUG
-				assert(op_stack.back()[0] == '(');
+				assert(op_stack.back().m_Op[0] == '(');
 #else
-				if (op_stack.back()[0] != '(') [[unlikely]]
+				if (op_stack.back().m_Op[0] != '(') [[unlikely]]
 					return std::unexpected("SYA error: Top of the stack is not a '(' - assertion failed");
 #endif
 				// pop the left parenthesis from the operator stack and discard it
@@ -383,9 +413,23 @@ constexpr auto ShuntingYardAlgorithm(span<string_view const> tokens) noexcept ->
 			if there is a function token at the top of the operator stack, then:
 				pop the function from the operator stack into the output queue
 			*/
-			if (!op_stack.empty() && fnIsFunction(op_stack.back()))
+			if (!op_stack.empty() && fnIsFunction(op_stack.back().m_Op))
 			{
-				ret.push_back(op_stack.back());
+				ret.push_back({ op_stack.back().m_Op, nullopt });
+				op_stack.pop_back();
+			}
+		}
+
+		// Ignore comma, it's only a separator for function call.
+		// The reason why we are leaving it here is for the sake of things like random(-5, -7)
+		// Tossing the comma out early will lead to some bad interpretation, like random(-5 -7)
+		// The effect of ',' is to force the eval of previous argument.
+		// Otherwise, expr like -sin(0) will be very wrong, the negate op will be postponed to the end.
+		else if (token.length() == 1 && token[0] == ',')
+		{
+			while (!op_stack.empty() && op_stack.back().m_Op != "(")
+			{
+				ret.push_back({ op_stack.back().m_Op, fnGetOperandCount(op_stack.back(), tokens) });
 				op_stack.pop_back();
 			}
 		}
@@ -397,10 +441,10 @@ constexpr auto ShuntingYardAlgorithm(span<string_view const> tokens) noexcept ->
 	/* After the while loop, pop the remaining items from the operator stack into the output queue. */
 	while (!op_stack.empty())
 	{
-		if (op_stack.back() == "(")
+		if (op_stack.back().m_Op == "(")
 			return std::unexpected("SYA error: If the operator token on the top of the stack is a parenthesis, then there are mismatched parentheses");
 
-		ret.emplace_back(op_stack.back());
+		ret.push_back({ op_stack.back().m_Op, fnGetOperandCount(op_stack.back(), tokens) });
 		op_stack.pop_back();
 	}
 
@@ -411,9 +455,70 @@ constexpr auto ShuntingYardAlgorithm(span<string_view const> tokens) noexcept ->
 
 enum EBuiltInOpPrecedence : uint8_t
 {
-	OpPrec_ScopeResolution = 255,
-	OpPrec_MemberAccess = 254,
-	OpPrec_FunctionCall = 253,
+	// https://en.cppreference.com/w/cpp/language/operator_precedence.html
+
+	// #1, L
+	OpPrec_ScopeResolution = 255,	// a::b
+
+	// #2, L
+	OpPrec_MemberAccess = 254,	// a.b	a->b
+	OpPrec_FunctionCall = 253,	// a()
+	OpPrec_SuffixIncDec = 252,	// a++	a--
+
+	// #3, R
+	OpPrec_PrefixIncDec = 251,	// ++a	--a
+	OpPrec_Unary = 251,			// +a	-a	!a	~a
+	OpPrec_TypeCast = 251,		// (type)a
+	OpPrec_Indirection = 251,	// *a
+	OpPrec_AddressOf = 251,		// &a
+	OpPrec_SizeOf = 251,		// sizeof a
+	OpPrec_Await = 251,			// co_await a
+	OpPrec_HeapAlloc = 251,		// new a	new a[b]	delete a	delete[] a
+
+	// #4, L
+	OpPrec_PointToMember = 243,	// a.*b		a->*b
+
+	// #5, L
+	OpPrec_Multiplication = 242,	// a * b	a / b	a % b
+
+	// #6, L
+	OpPrec_Addition = 241,			// a + b	a - b
+
+	// #7, L
+	OpPrec_BitShift = 240,			// a << b	a >> b
+
+	// #8, L
+	OpPrec_ThreewayCmp = 239,		// a <=> b
+
+	// #9, L
+	OpPrec_Relational = 238,		// a < b	a <= b	a > b	a >= b
+
+	// #10, L
+	OpPrec_Equality = 237,			// a == b	a != b
+
+	// #11, L
+	OpPrec_BitAND = 236,			// a & b
+
+	// #12, L
+	OpPrec_BitXOR = 235,			// a ^ b
+
+	// #13, L
+	OpPrec_BitOR = 234,				// a | b
+
+	// #14, L
+	OpPrec_LogicalAND = 233,		// a && b
+
+	// #15, L
+	OpPrec_LogicalOR = 232,			// a || b
+
+	// #16, R
+	OpPrec_TernaryConditional = 231,	// a ? b : c
+	OpPrec_Throw = 230,
+	OpPrec_Yield = 229,
+	OpPrec_Assignment = 228,	// a = b   a += b   a -= b   a *= b   a /= b   a %= b   a <<= b   a >>= b   a &= b   a ^= b   a |= b
+
+	// #17, L
+	OpPrec_Comma,
 };
 
 enum struct EAssociativity : bool
@@ -460,15 +565,25 @@ namespace DynExpr
 	}
 
 	template <typename R, typename... Params>
-	void BindOperator(string_view szName, EAssociativity Associativity, uint8_t OpPrecedence, R(*pfn)(Params...)) noexcept
+	void BindOperator(string_view szName, EAssociativity Associativity, uint8_t OpPrec, R(*pfn)(Params...)) noexcept
 	{
+		if (szName == ",") [[unlikely]]
+		{
+			assert(false);
+#ifndef _DEBUG
+			// One must NOT use comma as an operator!
+			std::abort();
+#endif
+		}
+
 		auto& Result = BindFunction(szName, pfn);
 		Result.m_Associativity = Associativity;
-		Result.m_OpPrecedence = OpPrecedence;
+		Result.m_OpPrecedence = OpPrec;
 
 		for (auto&& FnBinder : m_Functions[szName])
 		{
-			if (FnBinder.m_Associativity != Associativity || FnBinder.m_OpPrecedence != OpPrecedence) [[unlikely]]
+			if (FnBinder.m_iParamCount == Result.m_iParamCount &&
+				(FnBinder.m_Associativity != Associativity || FnBinder.m_OpPrecedence != OpPrec)) [[unlikely]]
 			{
 				assert(false);
 #ifndef _DEBUG
@@ -477,6 +592,9 @@ namespace DynExpr
 #endif
 			}
 		}
+
+		auto& OverloadSet = m_Functions[szName];
+		std::ranges::stable_sort(OverloadSet, std::ranges::greater{}, &Function::m_OpPrecedence);
 	}
 
 	inline map<string_view, any, std::ranges::less> m_Constants{
@@ -552,18 +670,33 @@ namespace DynExpr
 				// Normalize all arithmetic types into double
 				+[](C* object, T C::* ptm) noexcept -> std::conditional_t<std::is_arithmetic_v<T>, double, T> { return std::invoke(ptm, *object); }
 			);
+			BindOperator(
+				"*", EAssociativity::Right, OpPrec_Indirection,
+				+[](C* object) noexcept -> C { return std::move(*object); }
+			);
 			m_SupportedClasses.emplace(typeid(C));
 		}
 	}
 
-	void Call(string_view szFuncName)
+	void Call(token_t token)
 	{
 		bool bCalled = false;
 		string szErrMsg{};
 
-		auto&& overloads = m_Functions.at(szFuncName);
+		auto&& overloads = m_Functions.at(token.m_Symbol);
 		for (auto&& func : overloads)
 		{
+			// Filter by operand, if it's an operator.
+			if (token.m_OperandCount)
+			{
+				if (token.m_OperandCount != func.m_iParamCount)
+				{
+					szErrMsg =
+						std::format("Operator resolution failed: expected {:x} operand(s) but {} received.", *token.m_OperandCount, func.m_iParamCount);
+					continue;
+				}
+			}
+
 			auto&& bgn = std::ranges::prev(
 				m_Stack.end(),
 				std::ranges::min(std::ssize(m_Stack), func.m_iParamCount)
@@ -572,7 +705,7 @@ namespace DynExpr
 
 			if (std::ssize(args) != func.m_iParamCount)
 			{
-				szErrMsg = std::format("Function '{}' expecting {} parameters, but {} arguments received.", szFuncName, func.m_iParamCount, args.size());
+				szErrMsg = std::format("Function '{}' expecting {} parameters, but {} arguments received.", token.m_Symbol, func.m_iParamCount, args.size());
 				continue;
 			}
 
@@ -827,10 +960,28 @@ namespace DynExpr
 	static_assert(!IsLiteral("-12.34ef5"));	// Bad: floating with 'f'
 	static_assert(!IsLiteral("1.") && !IsLiteral("1e"));	// Bad: Bad fp format.
 
-	bool IsFunction(string_view s) noexcept
+	constexpr bool IsOpenBracket(string_view s) noexcept
+	{
+		return s == "(";
+	}
+
+	constexpr bool IsCloseBracket(string_view s) noexcept
+	{
+		return s == ")";
+	}
+
+	bool IsFunction(string_view s) noexcept	// Will exclude operators.
 	{
 		if (auto const it = m_Functions.find(s); it != m_Functions.cend())
-			return it->second.front().m_OpPrecedence == OpPrec_FunctionCall;
+		{
+			for (auto&& FnBinder : it->second)
+			{
+				if (FnBinder.m_OpPrecedence != OpPrec_FunctionCall)
+					return false;
+			}
+
+			return true;
+		}
 
 		return false;
 	}
@@ -838,33 +989,161 @@ namespace DynExpr
 	bool IsOperator(string_view s) noexcept
 	{
 		if (auto const it = m_Functions.find(s); it != m_Functions.cend())
-			return it->second.front().m_OpPrecedence != OpPrec_FunctionCall;
+		{
+			for (auto&& FnBinder : it->second)
+			{
+				if (FnBinder.m_OpPrecedence == OpPrec_FunctionCall)
+					return false;
+			}
+
+			return true;
+		}
 
 		return false;
 	}
 
-	bool IsLeftAssociative(string_view s) noexcept
+	optional<uint8_t> GetOperandCount(op_context_t const& OpContext, span<string_view const> tokens) noexcept
 	{
-		if (auto const it = m_Functions.find(s); it != m_Functions.cend())
-			return it->second.front().m_Associativity == EAssociativity::Left;
+		if (!IsOperator(OpContext.m_Op))
+			return std::nullopt;
 
-		return false;
+		uint8_t ret{ 0 };
+
+		/*
+		FN() * a
+		CONST * a
+		*/
+
+		if (IsCloseBracket(OpContext.m_Prev) || IsIdentifier(OpContext.m_Prev) || IsLiteral(OpContext.m_Prev))
+			++ret;
+
+		/*
+		a * (b + c)
+		a * CONST
+		a * FN()
+		*/
+
+		if (IsOpenBracket(OpContext.m_Next) || IsIdentifier(OpContext.m_Next) || IsLiteral(OpContext.m_Next)
+			|| IsFunction(OpContext.m_Next))	// IsFunction() MUST EXCLUDE operators!
+		{
+			++ret;
+		}
+
+		/*    |
+		CONST * -*a	// CONST multiply negated deref 'a'
+		CONST / -(a + b)
+		*/
+		if (ret < 2)
+		{
+			ptrdiff_t iUnaryDebt = 0, i = OpContext.m_Position + 1;
+			for (; i < std::ssize(tokens); ++i)
+			{
+				if (IsOperator(tokens[i]))
+				{
+					auto const& OverloadSet = m_Functions[tokens[i]];
+					for (auto&& Candidate : OverloadSet)
+					{
+						// Has a potential to function as unary op is enough.
+						if (Candidate.m_iParamCount == 1 && Candidate.m_Associativity == EAssociativity::Right)
+						{
+							++iUnaryDebt;
+							break;
+						}
+					}
+				}
+				else if (IsOpenBracket(tokens[i]) || IsIdentifier(tokens[i]) || IsLiteral(tokens[i]) || IsFunction(tokens[i]))
+					// Stop searching once a operand is found.
+					break;
+			}
+
+			// iUnaryDebt == 0 means the next token is already an operand - will count twice if we ++ here.
+			// Every step between this operator and the next operand is right-acc unary op. Good enough.
+			if (iUnaryDebt != 0 && iUnaryDebt == (i - (OpContext.m_Position + 1)))
+				++ret;
+		}
+
+		/*
+		a++ + CONST
+		(a->b)++ + CONST
+		*/
+		if (ret < 2)
+		{
+			ptrdiff_t iUnaryDebt = 0, i = OpContext.m_Position - 1;
+			for (; i > -1; --i)
+			{
+				if (IsOperator(tokens[i]))
+				{
+					auto const& OverloadSet = m_Functions[tokens[i]];
+					for (auto&& Candidate : OverloadSet)
+					{
+						// Has a potential to function as unary op is enough.
+						if (Candidate.m_iParamCount == 1 && Candidate.m_Associativity == EAssociativity::Left)
+						{
+							++iUnaryDebt;
+							break;
+						}
+					}
+				}
+				else if (IsCloseBracket(tokens[i]) || IsIdentifier(tokens[i]) || IsLiteral(tokens[i]))
+					// Stop searching once a operand is found.
+					break;
+			}
+
+			// Every step between this operator and the next operand is right-acc unary op. Good enough.
+			if (iUnaryDebt != 0 && iUnaryDebt == (OpContext.m_Position + 1 - i))
+				++ret;
+		}
+
+		return ret;
 	}
 
-	uint8_t GetOpPrecedence(string_view s) noexcept
+	optional<bool> IsLeftAssociative(op_context_t const& OpContext, span<string_view const> tokens) noexcept
 	{
-		if (auto const it = m_Functions.find(s); it != m_Functions.cend())
-			return it->second.front().m_OpPrecedence;
+		auto const iOperandCount = GetOperandCount(OpContext, tokens);
 
-		return 0;
+		if (auto const it = m_Functions.find(OpContext.m_Op); it != m_Functions.cend())
+		{
+			// Assume the overload set is sorted by precedence.
+			auto const& OverloadSet = it->second;
+
+			for (auto&& Candidate : OverloadSet)
+			{
+				if (Candidate.m_iParamCount == iOperandCount)
+					return Candidate.m_Associativity == EAssociativity::Left;
+			}
+		}
+
+		//throw std::runtime_error{ "Not an operator!" };
+		return std::nullopt;
+	}
+
+	optional<uint8_t> GetOpPrecedence(op_context_t const& OpContext, span<string_view const> tokens) noexcept
+	{
+		auto const iOperandCount = GetOperandCount(OpContext, tokens);
+
+		if (auto const it = m_Functions.find(OpContext.m_Op); it != m_Functions.cend())
+		{
+			// Assume the overload set is sorted by precedence.
+			auto const& OverloadSet = it->second;
+
+			for (auto&& Candidate : OverloadSet)
+			{
+				if (Candidate.m_iParamCount == iOperandCount)
+					return Candidate.m_OpPrecedence;
+			}
+		}
+
+		//throw std::runtime_error{ "Not an operator!" };
+		return std::nullopt;
 	}
 
 	__forceinline auto Tokenizer(string_view const& s) noexcept
 	{
 		return
 			::Tokenizer<
+				// Including regular functions but excluding operators
 				[](string_view s, bool b) noexcept { return (IsIdentifier(s) && !IsOperator(s)) || IsLiteral(s, b); },
-				[](string_view s) noexcept { return s == "(" || s == ")"; },
+				[](string_view s) noexcept { return IsOpenBracket(s) || IsCloseBracket(s); },
 				&IsOperator
 			>(s, " \t\f\v\r\n");
 	}
@@ -873,38 +1152,45 @@ namespace DynExpr
 	{
 		return
 			::ShuntingYardAlgorithm<
+				// Excluding both functions and operators.
 				[](auto&& s) noexcept { return (IsIdentifier(s) && !m_Functions.contains(s)) || IsLiteral(s); },
 				&IsOperator,
 				&IsFunction,
 				&IsLeftAssociative,
-				&GetOpPrecedence
+				&GetOpPrecedence,
+				&GetOperandCount
 			>(tokens);
 	}
 
 	//
 
 	template <typename T>
-	auto Execute(span<string_view const> Instructions) noexcept -> expected<T, string>
+	auto Execute(span<token_t const> Instructions) noexcept -> expected<T, string>
 	{
+		m_Stack.clear();
+
 		try
 		{
 			for (auto&& token : Instructions)
 			{
-				if (token == ",")
-					continue;	// ignored
-				else if (TryPushMem(token)) {
+				if (token.m_Symbol == ",") {	// NOP
 				}
-				else if (TryPushConst(token)) {
+				else if (TryPushMem(token.m_Symbol)) {
 				}
-				else if (IsLiteral(token)) {
-					if (auto res = PushLiteral(token); !res)
+				else if (TryPushConst(token.m_Symbol)) {
+				}
+				else if (IsLiteral(token.m_Symbol)) {
+					if (auto res = PushLiteral(token.m_Symbol); !res)
 						throw std::runtime_error{ std::move(res).error() };
 				}
-				else if (IsFunction(token) || IsOperator(token))
+				else if (IsFunction(token.m_Symbol) || IsOperator(token.m_Symbol))
 					Call(token);
 				else
-					throw std::runtime_error{ std::format("Unknow token '{}'", token) };
+					throw std::runtime_error{ std::format("Unknow token '{}'", token.m_Symbol) };
 			}
+
+			if (m_Stack.size() != 1)
+				throw std::runtime_error{ std::format("ESP corrpution detected, stack size == {}", m_Stack.size()) };
 
 			return Pop<T>();
 		}

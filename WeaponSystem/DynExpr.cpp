@@ -15,8 +15,7 @@ void InitializeDynExpr() noexcept
 	if (bInit)
 		return;
 
-	// Should have be built-in
-	DynExpr::BindOperator(",", EAssociativity::Left, 1, +[]() noexcept {});
+	DynExpr::BindConstant<Vector>("vecZero", g_vecZero);
 
 	DynExpr::BindFunction("Vector", +[](double x, double y, double z) noexcept { return Vector{ x, y, z }; });
 	DynExpr::BindFunction("Vector2D", +[](double x, double y) noexcept { return Vector2D{ (float)x, (float)y, }; });
@@ -26,18 +25,22 @@ void InitializeDynExpr() noexcept
 	DynExpr::BindMember("y", &Vector::y);
 	DynExpr::BindMember("z", &Vector::z);
 
-	DynExpr::BindOperator("+", EAssociativity::Left, 3, +[](double lhs, double rhs) { return lhs + rhs; });
-	DynExpr::BindOperator("-", EAssociativity::Left, 3, +[](double lhs, double rhs) { return lhs - rhs; });
-	DynExpr::BindOperator("*", EAssociativity::Left, 5, +[](double lhs, double rhs) { return lhs * rhs; });
-	DynExpr::BindOperator("/", EAssociativity::Left, 5, +[](double lhs, double rhs) { return lhs / rhs; });
-	DynExpr::BindOperator("**", EAssociativity::Right, 7, +[](double lhs, double rhs) { return std::pow(lhs, rhs); });
+	DynExpr::BindOperator("-", EAssociativity::Right, OpPrec_Unary, +[](double operand) { return -operand; });
+	DynExpr::BindOperator("+", EAssociativity::Left, OpPrec_Addition, +[](double lhs, double rhs) { return lhs + rhs; });
+	DynExpr::BindOperator("-", EAssociativity::Left, OpPrec_Addition, +[](double lhs, double rhs) { return lhs - rhs; });
+	DynExpr::BindOperator("*", EAssociativity::Left, OpPrec_Multiplication, +[](double lhs, double rhs) { return lhs * rhs; });
+	DynExpr::BindOperator("/", EAssociativity::Left, OpPrec_Multiplication, +[](double lhs, double rhs) { return lhs / rhs; });
+	DynExpr::BindOperator("**", EAssociativity::Right, OpPrec_PointToMember, +[](double lhs, double rhs) { return std::pow(lhs, rhs); });
 
-	DynExpr::BindOperator("+", EAssociativity::Left, 3, +[](Vector lhs, Vector rhs) { return lhs + rhs; });
-	DynExpr::BindOperator("-", EAssociativity::Left, 3, +[](Vector lhs, Vector rhs) { return lhs - rhs; });
-	DynExpr::BindOperator("*", EAssociativity::Left, 5, +[](Vector lhs, double rhs) { return lhs * rhs; });
-	DynExpr::BindOperator("*", EAssociativity::Left, 5, +[](double lhs, Vector rhs) { return lhs * rhs; });
-	DynExpr::BindOperator("/", EAssociativity::Left, 5, +[](Vector lhs, double rhs) { return lhs / rhs; });
+	DynExpr::BindOperator("-", EAssociativity::Right, OpPrec_Unary, +[](Vector operand) { return -operand; });
+	DynExpr::BindOperator("+", EAssociativity::Left, OpPrec_Addition, +[](Vector lhs, Vector rhs) { return lhs + rhs; });
+	DynExpr::BindOperator("-", EAssociativity::Left, OpPrec_Addition, +[](Vector lhs, Vector rhs) { return lhs - rhs; });
+	DynExpr::BindOperator("*", EAssociativity::Left, OpPrec_Multiplication, +[](Vector lhs, double rhs) { return lhs * rhs; });
+	DynExpr::BindOperator("*", EAssociativity::Left, OpPrec_Multiplication, +[](double lhs, Vector rhs) { return lhs * rhs; });
+	DynExpr::BindOperator("/", EAssociativity::Left, OpPrec_Multiplication, +[](Vector lhs, double rhs) { return lhs / rhs; });
 
+	DynExpr::BindFunction("rd", &UTIL_Random<double>);
+	DynExpr::BindFunction("rand", &UTIL_Random<double>);
 	DynExpr::BindFunction("random", &UTIL_Random<double>);
 
 	bInit = true;
