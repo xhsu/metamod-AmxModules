@@ -531,7 +531,7 @@ namespace DynExpr
 {
 	struct Function final
 	{
-		move_only_function<any(span<any>)> m_callable{};	// #UPDATE_AT_CPP26 copyable_function
+		move_only_function<any(span<any>) const> m_callable{};	// #UPDATE_AT_CPP26 copyable_function
 		ptrdiff_t m_iParamCount{};
 		vector<type_info const*> m_ParamTypes{};
 		EAssociativity m_Associativity{ EAssociativity::Left };
@@ -655,10 +655,21 @@ namespace DynExpr
 		);
 
 		// Avoid repeat register
-		static set<type_index, std::ranges::less> m_SupportedClasses{};
+		static map<type_info const*, set<type_info const*, std::ranges::less>, std::ranges::less>
+			m_SupportedClasses{};
+
+		// Automatically list '*' as deref operator for this class.
+		// Must put before '.' and '->' because they are going to create the class map.
+		if (!m_SupportedClasses.contains(&typeid(C)))
+		{
+			BindOperator(
+				"*", EAssociativity::Right, OpPrec_Indirection,
+				+[](C* object) noexcept -> C { return std::move(*object); }
+			);
+		}
 
 		// Automatically list '.' as member accessing operator for this class.
-		if (!m_SupportedClasses.contains(type_index{ typeid(C) }))
+		if (!m_SupportedClasses[&typeid(C)].contains(&typeid(T)))
 		{
 			BindOperator(
 				".", EAssociativity::Left, OpPrec_MemberAccess,
@@ -670,12 +681,35 @@ namespace DynExpr
 				// Normalize all arithmetic types into double
 				+[](C* object, T C::* ptm) noexcept -> std::conditional_t<std::is_arithmetic_v<T>, double, T> { return std::invoke(ptm, *object); }
 			);
-			BindOperator(
-				"*", EAssociativity::Right, OpPrec_Indirection,
-				+[](C* object) noexcept -> C { return std::move(*object); }
-			);
-			m_SupportedClasses.emplace(typeid(C));
+			m_SupportedClasses[&typeid(C)].emplace(&typeid(T));
 		}
+	}
+
+	template <class C, typename R, typename... Params>
+	auto BindMethod(string_view szName, R(C::* pfn)(Params...) const) noexcept -> Function&
+	{
+		m_Functions[szName].push_back(
+			Function {
+				[pfn](span<any> args) -> any
+				{
+					return[&]<size_t... I>(std::index_sequence<I...>) -> any
+					{
+						if constexpr (std::same_as<R, void>)
+						{
+							std::invoke(pfn, any_cast<C&&>(std::move(args[0])), any_cast<Params&&>(std::move(args[1 + I]))...);
+							return {};
+						}
+						else
+							return std::invoke(pfn, any_cast<C&&>(std::move(args[0])), any_cast<Params&&>(std::move(args[1 + I]))...);
+					}
+					(std::index_sequence_for<Params...>{});
+				},
+				(ptrdiff_t)sizeof...(Params) + 1,
+				decltype(Function::m_ParamTypes){ &typeid(C), &typeid(Params)... }
+			}
+		);
+
+		return m_Functions[szName].back();
 	}
 
 	void Call(token_t token)
