@@ -177,7 +177,7 @@ struct CGunSmoke : Prefab_t
 	};
 
 	CGunSmoke(CBasePlayer* pPlayer, Vector const& vecMuzzleOfs, bool bIsPistol, bool bShootingLeft) noexcept
-		: m_pPlayer{ pPlayer }, m_bIsPistol{ bIsPistol },
+		: m_pPlayer{ pPlayer }, m_bIsPistol{ bIsPistol }, m_bShootingLeft{ bShootingLeft },
 		m_vecViewModelMuzzle{ vecMuzzleOfs }
 	{
 		g_engfuncs.pfnGetAttachment(pPlayer->edict(), bShootingLeft ? 1 : 0, m_vecWorldGunshotSpot, nullptr);
@@ -189,13 +189,13 @@ struct CGunSmoke : Prefab_t
 
 		pev->rendermode = kRenderTransAdd;
 		pev->renderamt = UTIL_Random(48.f, 72.f);	// Alpha?
-		pev->rendercolor = Vector(0xD1, 0xC5, 0x9F);	// Color. Cannot be 0x000000
+		pev->rendercolor = Vector(0xFF, 0xFF, 0xFF);	// Color. Cannot be 0x000000. Default: 0xD1, 0xC5, 0x9F
 		pev->frame = 0;
 
 		pev->solid = SOLID_NOT;
 		pev->movetype = MOVETYPE_NOCLIP;
 		pev->gravity = 0;
-		pev->scale = UTIL_Random(0.6f, 0.75f);
+		pev->scale = UTIL_Random(0.2f, 0.35f);
 		pev->owner = m_pPlayer->edict();
 
 		auto const& GunSmokeSpr = m_bIsPistol ? UTIL_GetRandomOne(PistolSmokes) : UTIL_GetRandomOne(RifleSmokes);
@@ -206,10 +206,27 @@ struct CGunSmoke : Prefab_t
 		m_Scheduler.Enroll(Task_SpritePlayOnce(pev, GoldSrc::SpriteInfo[GunSmokeSpr.m_pszName]->m_iNumOfFrames, FPS), TASK_ANIMATION);
 		m_Scheduler.Enroll(Task_FadeOut(pev, 0.f, 1.f, 0.07f, UTIL_Random(0.65f, 0.85f)), TASK_FADE_OUT);
 		//m_Scheduler.Enroll(Task_TellMeWhere(m_pPlayer, m_vecViewModelMuzzle));
+		m_Scheduler.Enroll(Task_UpdateFirstPersonalPos(), TASK_FOLLOWING);
+	}
+
+	Task Task_UpdateFirstPersonalPos() noexcept
+	{
+		for (; m_pPlayer && m_pPlayer->IsAlive(); co_await TaskScheduler::NextFrame::Rank[0])
+		{
+			auto&& [fwd, right, up]
+				= m_pPlayer->pev->v_angle.AngleVectors();
+
+			auto const vecOrigin =
+				m_pPlayer->pev->origin + m_pPlayer->pev->view_ofs
+				+ up * m_vecViewModelMuzzle.z + fwd * m_vecViewModelMuzzle.x + right * m_vecViewModelMuzzle.y;
+
+			g_engfuncs.pfnSetOrigin(this->edict(), vecOrigin);
+			pev->velocity = m_pPlayer->pev->velocity + m_pPlayer->pev->basevelocity;
+		}
 	}
 
 	CBasePlayer* m_pPlayer{};
-	bool m_bIsPistol{};
+	bool m_bIsPistol{}, m_bShootingLeft{};
 	Vector m_vecWorldGunshotSpot{};	// Attachment #0 - on player model.
 	Vector m_vecViewModelMuzzle{};	// Attachment #0 - on view model.
 };
@@ -462,6 +479,9 @@ void Effect_AddToFullPack_Post(entity_state_t* pState, edict_t* pEdict, edict_t*
 	if (pClientSendTo != pOwnerEdict
 		|| (pClientSendTo == pOwnerEdict && !UTIL_IsFirstPersonal(pOwnerEdict)))
 	{
+		pState->movetype = MOVETYPE_NONE;
+		pState->velocity = g_vecZero;
 		pState->origin = pGunSmoke->m_vecWorldGunshotSpot;
+		pState->scale = 0.65f;
 	}
 }
