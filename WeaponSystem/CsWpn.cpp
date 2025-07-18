@@ -161,33 +161,6 @@ extern Vector2D CS_FireBullets3(
 	return rgszSoundPaths;
 }
 
-[[nodiscard]] static auto BuildViewModelExtEvs(string_view szModel) noexcept -> std::map<std::string_view, std::vector<mstudioevent_t const*>, sv_iless_t>
-{
-	std::map<std::string_view, std::vector<mstudioevent_t const*>, sv_iless_t> res{};
-
-	// #UPDATE_AT_CPP26 transparant at
-	auto const ModelInfo = Resource::GetStudioTranscription(szModel);
-
-	for (auto&& Sequence : ModelInfo->m_Sequences)
-	{
-		for (auto&& Event : Sequence.m_Events)
-		{
-			switch (Event.event)
-			{
-			case 6001:	// Gun muzzle smoke
-			case 6002:	// Shell
-				res[Sequence.m_szLabel].push_back(std::addressof(Event));
-				break;
-
-			default:
-				break;
-			}
-		}
-	}
-
-	return std::move(res);
-}
-
 extern auto RunDynExpr(string_view szExpr) noexcept -> std::expected<std::any, string>;
 extern void DynExprBindVector(string_view name, Vector const& vec) noexcept;
 
@@ -284,7 +257,6 @@ template <typename T>
 struct CBasePistol : CPrefabWeapon
 {
 	uint16_t m_usFireEv{}, m_usFireEv2{};
-	static inline decltype(::BuildViewModelExtEvs("")) m_ViewModelExtEvs, m_ShieldedViewModelExtEvs;
 
 	qboolean UseDecrement() noexcept override { return true; }
 	int iItemSlot() noexcept override { return T::DAT_SLOT + 1; }
@@ -335,7 +307,6 @@ struct CBasePistol : CPrefabWeapon
 	{
 		g_engfuncs.pfnPrecacheModel(T::MODEL_V);
 		Resource::Transcript(T::MODEL_V);
-		m_ViewModelExtEvs = ::BuildViewModelExtEvs(CRTP()->MODEL_V);
 
 		g_engfuncs.pfnPrecacheModel(T::MODEL_W);
 		g_engfuncs.pfnPrecacheModel(T::MODEL_P);
@@ -344,7 +315,6 @@ struct CBasePistol : CPrefabWeapon
 		{
 			g_engfuncs.pfnPrecacheModel(T::MODEL_V_SHIELD);
 			Resource::Transcript(T::MODEL_V_SHIELD);
-			m_ShieldedViewModelExtEvs = ::BuildViewModelExtEvs(CRTP()->MODEL_V_SHIELD);
 
 			g_engfuncs.pfnPrecacheModel(T::MODEL_P_SHIELD);
 		}
@@ -1032,122 +1002,108 @@ struct CBasePistol : CPrefabWeapon
 
 		// Extended model event dispatching.
 
-		auto pExtEvs = std::addressof(CRTP()->m_ViewModelExtEvs);
-		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
+		for (auto&& Event : pShootingAnim->m_Events)
 		{
-			if (CRTP()->m_pPlayer->HasShield())
-				pExtEvs = std::addressof(CRTP()->m_ShieldedViewModelExtEvs);
-		}
-
-		if (auto const it = pExtEvs->find(pShootingAnim->m_szLabel); it != pExtEvs->cend())
-		{
-			for (auto&& pEvent : it->second)
+			switch (Event.event)
 			{
-				switch (pEvent->event)
-				{
-				case 6001:
-				{
-					m_Scheduler.Enroll(
-						[](CBasePlayer* pPlayer,
-							mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim,
-							bool bShootingLeft) static noexcept -> Task
-						{
-							co_await (pEvent->frame / pShootingAnim->m_fps);
+			case 6001:	// Gun smoke
+			{
+				m_Scheduler.Enroll(
+					[](CBasePlayer* pPlayer,
+						mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim,
+						bool bShootingLeft) static noexcept -> Task
+					{
+						co_await (pEvent->frame / pShootingAnim->m_fps);
 
-							auto const iAttachment = std::atoi(pEvent->options);
-							auto const vecMuzOfs = UTIL_GetAttachmentOffset(
-								STRING(pPlayer->pev->viewmodel),
-								(unsigned)iAttachment,
-								pShootingAnim->m_index,
-								(float)pEvent->frame
-							);
-							CreateGunSmoke(pPlayer, vecMuzOfs, requires { T::FLAG_IS_PISTOL; }, bShootingLeft);
+						// Expecting format: [VIEW_MODEL_ATTACHMENT] [PLAYER_MODEL_ATTACHMENT]
+						auto const EvOption = UTIL_SplitByBrackets(pEvent->options)
+							.or_else([&](string_view s) noexcept -> std::expected<std::vector<std::string_view>, std::string_view> {
+								g_engfuncs.pfnServerPrint(
+									std::format("[WSIV] QC Script Err - {}: {}: {}\n",
+										STRING(pPlayer->pev->viewmodel), pShootingAnim->m_szLabel , s
+									).c_str()
+								);
+								return std::unexpected(std::move(s));
+							});
 
-							//auto&& [fwd, right, up] = pPlayer->pev->v_angle.AngleVectors();
-							//auto const vecOrigin = pPlayer->pev->origin + pPlayer->pev->view_ofs;
-							//
-							//for (int i = 0; i < 10; ++i, co_await 0.1f)
-							//{
-							//	MsgBroadcast(SVC_TEMPENTITY);
-							//	WriteData(TE_SPARKS);
-							//	WriteData(vecOrigin + fwd * vecMuzOfs.x + right * vecMuzOfs.y + up * vecMuzOfs.z);
-							//	MsgEnd();
-							//}
-						}(m_pPlayer, pEvent, pShootingAnim, bShootingLeft)
-					);
-					break;
-				}
-				case 6002:
-				{
-					m_Scheduler.Enroll(
-						[](CBasePistol* pWeapon, CBasePlayer* pPlayer,
-							mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim,
-							bool bShootingLeft) static noexcept -> Task
-						{
-							co_await(pEvent->frame / pShootingAnim->m_fps);
+						if (!EvOption || EvOption->size() < 2)
+							co_return;
 
-							auto const EvOption = UTIL_SplitByBrackets(pEvent->options)
-								.or_else([&](string_view s) noexcept -> std::expected<std::vector<std::string_view>, std::string_view> {
-									g_engfuncs.pfnServerPrint(
-										std::format("{}: {}: {}\n",
-											STRING(pPlayer->pev->viewmodel), pShootingAnim->m_szLabel , s
-										).c_str()
-									);
-									return std::unexpected(std::move(s));
-								});
+						auto const iAttachment = UTIL_StrToNum<unsigned>(EvOption->at(0));
+						auto const vecMuzOfs = UTIL_GetAttachmentOffset(
+							STRING(pPlayer->pev->viewmodel),
+							iAttachment,
+							pShootingAnim->m_index,
+							(float)pEvent->frame
+						);
+						CreateGunSmoke(pPlayer, vecMuzOfs, requires { T::FLAG_IS_PISTOL; }, bShootingLeft);
 
-							if (!EvOption)
-								co_return;
+					}(m_pPlayer, &Event, pShootingAnim, bShootingLeft)
+				);
+				break;
+			}
+			case 6002:	// Shell ejection
+			{
+				m_Scheduler.Enroll(
+					[](CBasePistol* pWeapon, CBasePlayer* pPlayer,
+						mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim,
+						bool bShootingLeft) static noexcept -> Task
+					{
+						co_await(pEvent->frame / pShootingAnim->m_fps);
 
-							auto const QcVeclocity = RunDynExpr(EvOption->at(1))
-								.and_then([&](std::any a) noexcept -> std::expected<Vector, std::string> {
-									try {
-										return std::any_cast<Vector>(std::move(a));
-									}
-									catch (const std::exception& e) {
-										return std::unexpected(e.what());
-									}
-								})
-								.or_else([&](string s) noexcept -> std::expected<Vector, std::string> {
-									g_engfuncs.pfnServerPrint(
-										std::format("{}: {}: {}\n",
-											STRING(pPlayer->pev->viewmodel), pShootingAnim->m_szLabel , s
-										).c_str()
-									);
-									return std::unexpected(std::move(s));
-								});
+						// Expecting format: [ATTACHMENT_NUM] [vec3(FWD, RIGHT, UP)]
+						auto const EvOption = UTIL_SplitByBrackets(pEvent->options)
+							.or_else([&](string_view s) noexcept -> std::expected<std::vector<std::string_view>, std::string_view> {
+								g_engfuncs.pfnServerPrint(
+									std::format("[WSIV] QC Script Err - {}: {}: {}\n",
+										STRING(pPlayer->pev->viewmodel), pShootingAnim->m_szLabel , s
+									).c_str()
+								);
+								return std::unexpected(std::move(s));
+							});
 
-							if (!QcVeclocity)
-								co_return;
+						if (!EvOption || EvOption->size() < 2)
+							co_return;
 
-							auto const iAttachment = UTIL_StrToNum<unsigned>(EvOption->at(0));	// arg0: attachment idx.
-							auto const vecEjtPortOfs = UTIL_GetAttachmentOffset(
-								STRING(pPlayer->pev->viewmodel),
-								iAttachment,
-								pShootingAnim->m_index,
-								(float)pEvent->frame
-							);
-							pWeapon->EjectBrass(vecEjtPortOfs, *QcVeclocity);
+						auto const QcVeclocity = RunDynExpr(EvOption->at(1))
+							.and_then([&](std::any a) noexcept -> std::expected<Vector, std::string> {
+								try {
+									return std::any_cast<Vector>(std::move(a));
+								}
+								catch (const std::exception& e) {
+									return std::unexpected(e.what());
+								}
+							})
+							.or_else([&](string s) noexcept -> std::expected<Vector, std::string> {
+								g_engfuncs.pfnServerPrint(
+									std::format("[WSIV] QC Script Err - {}: {}: {}\n",
+										STRING(pPlayer->pev->viewmodel), pShootingAnim->m_szLabel , s
+									).c_str()
+								);
+								return std::unexpected(std::move(s));
+							});
 
-							//auto&& [fwd, right, up] = pPlayer->pev->v_angle.AngleVectors();
-							//auto const vecOrigin = pPlayer->pev->origin + pPlayer->pev->view_ofs;
-							//
-							//for (int i = 0; i < 10; ++i, co_await 0.1f)
-							//{
-							//	MsgBroadcast(SVC_TEMPENTITY);
-							//	WriteData(TE_SPARKS);
-							//	WriteData(vecOrigin + fwd * vecEjtPortOfs.x + right * vecEjtPortOfs.y + up * vecEjtPortOfs.z);
-							//	MsgEnd();
-							//}
-						}(this, m_pPlayer, pEvent, pShootingAnim, bShootingLeft)
-					);
-					break;
-				}
-				default:
-					break;
-				}
+						if (!QcVeclocity)
+							co_return;
+
+						auto const iAttachment = UTIL_StrToNum<unsigned>(EvOption->at(0));	// arg0: attachment idx.
+						auto const vecEjtPortOfs = UTIL_GetAttachmentOffset(
+							STRING(pPlayer->pev->viewmodel),
+							iAttachment,
+							pShootingAnim->m_index,
+							(float)pEvent->frame
+						);
+						pWeapon->EjectBrass(vecEjtPortOfs, *QcVeclocity);
+
+					}(this, m_pPlayer, &Event, pShootingAnim, bShootingLeft)
+				);
+				break;
+			}
+			default:
+				break;
 			}
 		}
+
 	}
 
 	void PrimaryAttack() noexcept override
@@ -1899,7 +1855,7 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 		// G18 in CS doesn't have any recoil at all.
 	};
 	inline void EFFC_SND_FIRING() const noexcept {
-		g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON,
+		g_engfuncs.pfnEmitSound(m_pPlayer->edict(), CHAN_WEAPON,
 			UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(),
 			VOL_NORM, ATTN_NORM, SND_FL_NONE, 94 + UTIL_Random(0, 0xf)
 		);
