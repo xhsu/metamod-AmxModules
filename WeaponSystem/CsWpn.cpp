@@ -998,7 +998,7 @@ struct CBasePistol : CPrefabWeapon
 						if (!pPlayer->IsAlive())
 							co_return;
 
-						// Expecting format: [VIEW_MODEL_ATTACHMENT] [PLAYER_MODEL_ATTACHMENT]
+						// Expecting format: [VIEW_MODEL_ATTACHMENT] [PLAYER_MODEL_ATTACHMENT] [SPRITE_CANDIDATES]
 						auto const EvOption = pWeapon->ParseQcScript(pEvent, pShootingAnim);
 
 						if (!EvOption || EvOption->size() < 3)
