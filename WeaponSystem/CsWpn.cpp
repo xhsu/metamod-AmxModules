@@ -1,4 +1,4 @@
-
+﻿
 #include <assert.h>	// #UPDATE_AT_CPP26 contract assert
 
 #ifdef __INTELLISENSE__
@@ -65,7 +65,8 @@ enum EWeaponTaskFlags2 : std::uint64_t
 	TASK_ALL_MATERIALIZED = TASK_ALL_WEAKS << 8,
 };
 
-extern edict_t* CreateGunSmoke(CBasePlayer* pPlayer, Vector const& vecMuzzleOfs, bool bIsPistol, bool bShootingLeft) noexcept;
+extern void UpdateGunSmokeList(std::string_view szSmokeNameRoot) noexcept;
+extern edict_t* CreateGunSmoke(CBasePlayer* pPlayer, Vector const& vecMuzzleOfs, std::string_view szSmokeNameRoot, int iPlayerAttIdx) noexcept;
 
 extern Vector2D CS_FireBullets3(
 	CBasePlayer* pAttacker, CBasePlayerItem* pInflictor,
@@ -340,6 +341,26 @@ struct CBasePistol : CPrefabWeapon
 			m_usFireEv = g_engfuncs.pfnPrecacheEvent(1, T::EV_FIRE);
 
 		CRTP()->DAT_AMMUNITION = Ammo_Register(*CRTP()->DAT_AMMUNITION);
+
+		auto pTranscriptedStudio = Resource::GetStudioTranscription(T::MODEL_V);
+		for (auto&& Sequence : pTranscriptedStudio->m_Sequences)
+		{
+			for (auto&& Event : Sequence.m_Events)
+			{
+				switch (Event.event)
+				{
+				case 6001:	// Gun smoke
+				{
+					auto const QcScript = CRTP()->ParseQcScript(&Event, &Sequence);
+					if (QcScript && QcScript->size() >= 3)
+						::UpdateGunSmokeList(QcScript->at(2));
+					break;
+				}
+				default:
+					break;
+				}
+			}
+		}
 	}
 
 	qboolean GetItemInfo(ItemInfo* p) noexcept override
@@ -792,44 +813,6 @@ struct CBasePistol : CPrefabWeapon
 		//}
 	}
 
-	Task Task_ShootingEffects(bool bShootingLeft) const noexcept
-	{
-		Vector vecGunOrigin;
-		g_engfuncs.pfnGetAttachment(m_pPlayer->edict(), 0, vecGunOrigin, nullptr);
-
-		if constexpr (requires { T::FLAG_DUAL_WIELDING; })
-		{
-			// Fuck CS left hand issue.
-			bShootingLeft = !bShootingLeft;
-		}
-
-		if (bShootingLeft)
-			g_engfuncs.pfnGetAttachment(m_pPlayer->edict(), 1, vecGunOrigin, nullptr);
-
-		CRTP()->EFFC_SND_FIRING();
-
-		co_await TaskScheduler::NextFrame::Rank[0];
-		if (!m_pPlayer->IsAlive())
-			co_return;
-
-		if (!IsSilenced())
-		{
-			//UTIL_DLight(vecGunOrigin, 4.5f, { 255, 150, 15 }, 0.8f, 15.f);
-
-			co_await TaskScheduler::NextFrame::Rank[0];
-			if (!m_pPlayer->IsAlive())
-				co_return;
-		}
-
-		//EjectBrass(bShootingLeft);
-
-		co_await TaskScheduler::NextFrame::Rank[0];
-		if (!m_pPlayer->IsAlive())
-			co_return;
-
-		//CreateGunSmoke(m_pPlayer, requires { T::FLAG_IS_PISTOL; }, bShootingLeft);	// CS got right hand issue.
-	}
-
 	Task Task_BurstFire() noexcept
 	{
 		if constexpr (requires { T::m_bBurstFire; })
@@ -995,8 +978,7 @@ struct CBasePistol : CPrefabWeapon
 		}
 
 		CRTP()->EFFC_RECOIL();
-
-		m_Scheduler.Enroll(Task_ShootingEffects(bShootingLeft));	// Can't be overwrite by others.
+		CRTP()->EFFC_SND_FIRING();
 
 		// Extended model event dispatching.
 
@@ -1008,27 +990,33 @@ struct CBasePistol : CPrefabWeapon
 			{
 				m_Scheduler.Enroll(
 					[](CBasePistol* pWeapon, CBasePlayer* pPlayer,
-						mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim,
-						bool bShootingLeft) static noexcept -> Task
+						mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim
+						) static noexcept -> Task
 					{
 						co_await (pEvent->frame / pShootingAnim->m_fps);
+
+						if (!pPlayer->IsAlive())
+							co_return;
 
 						// Expecting format: [VIEW_MODEL_ATTACHMENT] [PLAYER_MODEL_ATTACHMENT]
 						auto const EvOption = pWeapon->ParseQcScript(pEvent, pShootingAnim);
 
-						if (!EvOption || EvOption->size() < 2)
+						if (!EvOption || EvOption->size() < 3)
 							co_return;
 
-						auto const iAttachment = UTIL_StrToNum<unsigned>(EvOption->at(0));
+						auto const iViewModelAtt = UTIL_StrToNum<unsigned>(EvOption->at(0));
+						auto const iPlayerAtt = UTIL_StrToNum<int>(EvOption->at(1));
+						auto const& szGunSmoke = EvOption->at(2);
 						auto const vecMuzOfs = UTIL_GetAttachmentOffset(
 							STRING(pPlayer->pev->viewmodel),
-							iAttachment,
+							iViewModelAtt,
 							pShootingAnim->m_index,
 							(float)pEvent->frame
 						);
-						CreateGunSmoke(pPlayer, vecMuzOfs, requires { T::FLAG_IS_PISTOL; }, bShootingLeft);
 
-					}(this, m_pPlayer, &Event, pShootingAnim, bShootingLeft)
+						CreateGunSmoke(pPlayer, vecMuzOfs, szGunSmoke, iPlayerAtt);
+
+					}(this, m_pPlayer, &Event, pShootingAnim)
 				);
 				break;
 			}
@@ -1036,10 +1024,13 @@ struct CBasePistol : CPrefabWeapon
 			{
 				m_Scheduler.Enroll(
 					[](CBasePistol* pWeapon, CBasePlayer* pPlayer,
-						mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim,
-						bool bShootingLeft) static noexcept -> Task
+						mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim
+						) static noexcept -> Task
 					{
 						co_await (pEvent->frame / pShootingAnim->m_fps);
+
+						if (!pPlayer->IsAlive())
+							co_return;
 
 						// Expecting format: [ATTACHMENT_NUM] [vec3(FWD, RIGHT, UP)]
 						auto EvOption = pWeapon->ParseQcScript(pEvent, pShootingAnim);
@@ -1064,7 +1055,7 @@ struct CBasePistol : CPrefabWeapon
 						);
 						pWeapon->EjectBrass(vecEjtPortOfs, *QcVeclocity);
 
-					}(this, m_pPlayer, &Event, pShootingAnim, bShootingLeft)
+					}(this, m_pPlayer, &Event, pShootingAnim)
 				);
 				break;
 			}
@@ -1072,8 +1063,8 @@ struct CBasePistol : CPrefabWeapon
 			{
 				m_Scheduler.Enroll(
 					[](CBasePistol* pWeapon, CBasePlayer* pPlayer,
-						mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim,
-						bool bShootingLeft) static noexcept -> Task
+						mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim
+						) static noexcept -> Task
 					{
 						// Expecting format: [PL_ATTACHMENT] [RADIUS] [vec3(R, G, B)] [LIFE] [DECAY]
 						auto EvOption = pWeapon->ParseQcScript(pEvent, pShootingAnim);
@@ -1092,12 +1083,14 @@ struct CBasePistol : CPrefabWeapon
 
 						co_await (pEvent->frame / pShootingAnim->m_fps);
 
+						if (!pPlayer->IsAlive())
+							co_return;
+
 						auto const iPlayerAttIdx = UTIL_StrToNum<int>(EvOption->at(0));
 						auto const flRadius = UTIL_StrToNum<float>(EvOption->at(1));
+						auto const QcColor = pWeapon->ExecuteQcScript<Vector>(EvOption->at(2), pShootingAnim);
 						auto const flLife = UTIL_StrToNum<float>(EvOption->at(3));
 						auto const flDecay = UTIL_StrToNum<float>(EvOption->at(4));
-
-						auto const QcColor = pWeapon->ExecuteQcScript<Vector>(EvOption->at(2), pShootingAnim);
 
 						if (!QcColor)
 							co_return;
@@ -1111,7 +1104,7 @@ struct CBasePistol : CPrefabWeapon
 							flLife, flDecay
 						);
 
-					}(this, m_pPlayer, &Event, pShootingAnim, bShootingLeft)
+					}(this, m_pPlayer, &Event, pShootingAnim)
 				);
 				break;
 			}

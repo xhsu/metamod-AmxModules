@@ -105,7 +105,7 @@ auto fw_Spawn(edict_t* pEdict) noexcept -> qboolean
 
 	// plugin_precache
 
-	Resource::Precache();
+	Resource::PrecacheEverything();
 	PrecacheCombinedModels();
 
 	g_bShouldPrecache = false;

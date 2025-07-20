@@ -5,6 +5,7 @@ import UtlRandom;
 import UtlString;
 
 import CBase;
+import FileSystem;
 import Message;
 import Prefab;
 import Resources;
@@ -133,7 +134,7 @@ struct CWallPuff : Prefab_t
 
 		g_engfuncs.pfnSetOrigin(edict(), m_tr.vecEndPos + m_tr.vecPlaneNormal * 24.0 * pev->scale);	// The actual SPR size will be 36 on radius. Clip the outter plain black part and it will be 24.
 
-		m_Scheduler.Enroll(Task_SpritePlayOnce(pev, GoldSrc::SpriteInfo[WallPuffSpr.m_pszName]->m_iNumOfFrames, FPS), TASK_ANIMATION);
+		m_Scheduler.Enroll(Task_SpritePlayOnce(pev, Resource::GetSpriteTranscription(WallPuffSpr.m_pszName)->m_iNumOfFrames, FPS), TASK_ANIMATION);
 		m_Scheduler.Enroll(Task_FadeOut(pev, 0.f, 1.f, 0.07f, UTIL_Random(0.65f, 0.85f)), TASK_FADE_OUT);
 	}
 
@@ -176,11 +177,14 @@ struct CGunSmoke : Prefab_t
 		"sprites/pistol_smoke2.spr",
 	};
 
-	CGunSmoke(CBasePlayer* pPlayer, Vector const& vecMuzzleOfs, bool bIsPistol, bool bShootingLeft) noexcept
-		: m_pPlayer{ pPlayer }, m_bIsPistol{ bIsPistol }, m_bShootingLeft{ bShootingLeft },
+	// Owns the string so we can pass them into Resource::Precache.
+	static inline std::map<std::string_view, std::vector<std::string>, sv_iless_t> m_SmokeSpriteList;
+
+	CGunSmoke(CBasePlayer* pPlayer, Vector const& vecMuzzleOfs, std::string_view szSmokeNameRoot, int iPlayerAttIdx) noexcept
+		: m_pPlayer{ pPlayer }, m_szSmokeNameRoot{ szSmokeNameRoot },
 		m_vecViewModelMuzzle{ vecMuzzleOfs }
 	{
-		g_engfuncs.pfnGetAttachment(pPlayer->edict(), bShootingLeft ? 1 : 0, m_vecWorldGunshotSpot, nullptr);
+		g_engfuncs.pfnGetAttachment(pPlayer->edict(), iPlayerAttIdx, m_vecWorldGunshotSpot, nullptr);
 	}
 
 	void Spawn() noexcept override
@@ -198,12 +202,14 @@ struct CGunSmoke : Prefab_t
 		pev->scale = UTIL_Random(0.2f, 0.35f);
 		pev->owner = m_pPlayer->edict();
 
-		auto const& GunSmokeSpr = m_bIsPistol ? UTIL_GetRandomOne(PistolSmokes) : UTIL_GetRandomOne(RifleSmokes);
-		g_engfuncs.pfnSetModel(edict(), GunSmokeSpr);
+		auto const& GunSmokeSpr = UTIL_GetRandomOne(m_SmokeSpriteList.at(m_szSmokeNameRoot));
+		g_engfuncs.pfnSetModel(edict(), GunSmokeSpr.c_str());
 
-		g_engfuncs.pfnSetOrigin(edict(), pev->origin);
+		auto&& [fwd, right, up]
+			= (m_pPlayer->pev->v_angle + m_pPlayer->pev->punchangle).AngleVectors();
+		g_engfuncs.pfnSetOrigin(edict(), m_pPlayer->pev->origin + m_pPlayer->pev->view_ofs + up * m_vecViewModelMuzzle.z + fwd * m_vecViewModelMuzzle.x + right * m_vecViewModelMuzzle.y);
 
-		m_Scheduler.Enroll(Task_SpritePlayOnce(pev, GoldSrc::SpriteInfo[GunSmokeSpr.m_pszName]->m_iNumOfFrames, FPS), TASK_ANIMATION);
+		m_Scheduler.Enroll(Task_SpritePlayOnce(pev, Resource::GetSpriteTranscription(GunSmokeSpr)->m_iNumOfFrames, FPS), TASK_ANIMATION);
 		m_Scheduler.Enroll(Task_FadeOut(pev, 0.f, 1.f, 0.07f, UTIL_Random(0.65f, 0.85f)), TASK_FADE_OUT);
 		//m_Scheduler.Enroll(Task_TellMeWhere(m_pPlayer, m_vecViewModelMuzzle));
 		m_Scheduler.Enroll(Task_UpdateFirstPersonalPos(), TASK_FOLLOWING);
@@ -226,23 +232,41 @@ struct CGunSmoke : Prefab_t
 	}
 
 	CBasePlayer* m_pPlayer{};
-	bool m_bIsPistol{}, m_bShootingLeft{};
+	std::string_view m_szSmokeNameRoot{};
 	Vector m_vecWorldGunshotSpot{};	// Attachment #0 - on player model.
 	Vector m_vecViewModelMuzzle{};	// Attachment #0 - on view model.
 };
 
-edict_t* CreateGunSmoke(CBasePlayer* pPlayer, Vector const& vecMuzzleOfs, bool bIsPistol, bool bShootingLeft) noexcept
+void UpdateGunSmokeList(std::string_view szSmokeNameRoot) noexcept
+{
+	auto& SpriteList = CGunSmoke::m_SmokeSpriteList[szSmokeNameRoot];
+	if (!SpriteList.empty())
+		return;
+
+	std::string szName{ szSmokeNameRoot };
+
+	if (szName.contains('*'))
+	{
+		UTIL_ReplaceAll(&szName, "*", "{}");
+
+		char szFileName[256]{};
+		for (int i = 0; i < 32; ++i)
+		{
+			auto pend = std::vformat_to(szFileName, szName, std::make_format_args(i));
+			*pend = '\0';
+
+			if (FileSystem::m_pObject->FileExists(szFileName))
+				SpriteList.emplace_back(szFileName);
+		}
+	}
+	else
+		SpriteList.push_back(std::move(szName));
+}
+
+edict_t* CreateGunSmoke(CBasePlayer* pPlayer, Vector const& vecMuzzleOfs, std::string_view szSmokeNameRoot, int iPlayerAttIdx) noexcept
 {
 	auto const [pEdict, pPrefab]
-		= UTIL_CreateNamedPrefab<CGunSmoke>(pPlayer, vecMuzzleOfs, bIsPistol, bShootingLeft);
-
-	auto&& [fwd, right, up]
-		= (pPlayer->pev->v_angle + pPlayer->pev->punchangle).AngleVectors();
-
-	if (!bShootingLeft)
-		pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * pPrefab->m_vecViewModelMuzzle.z + fwd * pPrefab->m_vecViewModelMuzzle.x + right * pPrefab->m_vecViewModelMuzzle.y;
-	else
-		pEdict->v.origin = pPlayer->pev->origin + pPlayer->pev->view_ofs + up * pPrefab->m_vecViewModelMuzzle.z + fwd * pPrefab->m_vecViewModelMuzzle.x - right * pPrefab->m_vecViewModelMuzzle.y;
+		= UTIL_CreateNamedPrefab<CGunSmoke>(pPlayer, vecMuzzleOfs, szSmokeNameRoot, iPlayerAttIdx);
 
 	pPrefab->Spawn();
 	pPrefab->pev->nextthink = 0.1f;
@@ -282,7 +306,7 @@ struct CSnowSteam : Prefab_t
 
 		g_engfuncs.pfnSetOrigin(edict(), m_tr.vecEndPos + m_tr.vecPlaneNormal * 24.0 * pev->scale);
 
-		m_Scheduler.Enroll(Task_SpritePlayOnce(pev, GoldSrc::SpriteInfo[STEAM_SPRITE]->m_iNumOfFrames, FPS), TASK_ANIMATION);
+		m_Scheduler.Enroll(Task_SpritePlayOnce(pev, Resource::GetSpriteTranscription(STEAM_SPRITE)->m_iNumOfFrames, FPS), TASK_ANIMATION);
 		m_Scheduler.Enroll(Task_FadeOut(pev, 0.f, 1.f, 0.07f, 0), TASK_FADE_OUT);
 	}
 

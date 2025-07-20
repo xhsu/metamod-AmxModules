@@ -14,6 +14,7 @@ import hlsdk;
 
 import FileSystem;
 import Models;
+import Platform;
 import Sprite;
 import Wave;
 
@@ -25,6 +26,8 @@ using std::string_view;
 using std::vector;
 
 using std::int32_t;
+
+using namespace std::literals;
 
 struct CaseIgnoredCmp final
 {
@@ -81,22 +84,45 @@ namespace Resource
 
 		vector<move_only_function<void() noexcept>> m_Initializers{};
 		map<string_view, int32_t, RES_INTERNAL_sv_iless_t> m_Record{};
-		map<string, TranscriptedStudio, RES_INTERNAL_sv_iless_t> m_TranscriptedStudio{};
+		map<string_view, TranscriptedStudio, RES_INTERNAL_sv_iless_t> m_TranscriptedStudio{};
 		map<string_view, double, RES_INTERNAL_sv_iless_t> m_SoundLength{};
+		map<string_view, TranscriptedSprite, RES_INTERNAL_sv_iless_t> m_TranscriptedSprites{};
 	};
 
 	export bool Transcript(string_view szRelativePath) noexcept
 	{
-		auto buf = FileSystem::LoadBinaryFile(szRelativePath.data());
-		auto&& [iter, bNewEntry]
-			= Manager::Get().m_TranscriptedStudio.try_emplace(
-				string{ szRelativePath },
-				buf.get()
-			);
+		if (std::ranges::ends_with(szRelativePath, ".mdl"sv, CaseIgnoredCmp{}))
+		{
+			auto buf = FileSystem::LoadBinaryFile(szRelativePath.data());
+			auto&& [iter, bNewEntry]
+				= Manager::Get().m_TranscriptedStudio.try_emplace(
+					szRelativePath,
+					buf.get()
+				);
 
-		[[maybe_unused]] auto& StudioInfo = iter->second;
+			[[maybe_unused]] auto& StudioInfo = iter->second;
 
-		return bNewEntry;
+			return bNewEntry;
+		}
+		else if (std::ranges::ends_with(szRelativePath, ".spr"sv, CaseIgnoredCmp{}))
+		{
+			if (auto f = FileSystem::FOpen(szRelativePath.data(), "rb"); f != nullptr)
+			{
+				auto const [it, bNew] = Manager::Get().m_TranscriptedSprites.try_emplace(
+					szRelativePath,
+					f
+				);
+				std::fclose(f);
+
+				return bNew;
+			}
+
+			return false;
+		}
+		else
+		{
+			UTIL_Terminate("Cannot transcript '%s'", szRelativePath.data());
+		}
 	}
 
 	export [[nodiscard]] auto GetStudioTranscription(string_view szRelativePath) noexcept -> TranscriptedStudio const*
@@ -109,10 +135,68 @@ namespace Resource
 		return nullptr;
 	}
 
-	export inline void Precache() noexcept
+	export [[nodiscard]] auto GetSpriteTranscription(string_view szRelativePath) noexcept -> TranscriptedSprite const*
+	{
+		auto& Lib = Manager::Get().m_TranscriptedSprites;
+
+		if (auto const it = Lib.find(szRelativePath); it != Lib.cend())
+			return std::addressof(it->second);
+
+		return nullptr;
+	}
+
+	export inline void PrecacheEverything() noexcept
 	{
 		for (auto&& fn : Manager::Get().m_Initializers)
 			fn();
+	}
+
+	export int Precache(string_view szRelativePath) noexcept
+	{
+		if (auto const it = Manager::Get().m_Record.find(szRelativePath);
+			it != Manager::Get().m_Record.end())
+		{
+			return it->second;
+		}
+
+		// will encounter \0 problem with string_view.
+
+		if (std::ranges::ends_with(szRelativePath, ".mdl"sv, CaseIgnoredCmp{}))
+		{
+			Manager::Get().m_Record[szRelativePath] = g_engfuncs.pfnPrecacheModel(szRelativePath.data());
+			Transcript(szRelativePath);
+		}
+		else if (std::ranges::ends_with(szRelativePath, ".spr"sv, CaseIgnoredCmp{}))
+		{
+			Manager::Get().m_Record[szRelativePath] = g_engfuncs.pfnPrecacheModel(szRelativePath.data());
+			Transcript(szRelativePath);
+		}
+		else if (std::ranges::ends_with(szRelativePath, ".wav"sv, CaseIgnoredCmp{}))
+		{
+			Manager::Get().m_Record[szRelativePath] = g_engfuncs.pfnPrecacheSound(szRelativePath.data());
+
+			char szPath[256]{};
+			std::format_to_n(szPath, sizeof(szPath) - 1, "sound/{}", szRelativePath);
+
+			auto const szAbsPath = FileSystem::GetAbsolutePath(szPath);
+			Manager::Get().m_SoundLength[szRelativePath] = Wave::Length(szAbsPath.data());
+		}
+		else if (std::ranges::ends_with(szRelativePath, ".sc"sv, CaseIgnoredCmp{}))
+		{
+			Manager::Get().m_Record[szRelativePath] = g_engfuncs.pfnPrecacheEvent(1, szRelativePath.data()); // #INVESTIGATE what does the first argument mean?
+		}
+		else [[unlikely]]
+		{
+			Manager::Get().m_Record[szRelativePath] = g_engfuncs.pfnPrecacheGeneric(szRelativePath.data());
+
+			assert((
+				std::ranges::ends_with(szRelativePath, ".txt"sv, CaseIgnoredCmp{})
+				|| std::ranges::ends_with(szRelativePath, ".tga"sv, CaseIgnoredCmp{})
+				|| std::ranges::ends_with(szRelativePath, ".res"sv, CaseIgnoredCmp{})
+			));
+		}
+
+		return Manager::Get().m_Record[szRelativePath];
 	}
 
 #ifdef _DEBUG
@@ -154,7 +238,7 @@ namespace Resource
 				Manager::Get().m_Initializers.emplace_back(
 					[&, rgcName]() noexcept {
 						m_Index = Manager::Get().m_Record[m_pszName] = g_engfuncs.pfnPrecacheModel(rgcName);
-						GoldSrc::SpriteInfo.Add(rgcName);
+						Transcript(rgcName);
 					}
 				);
 			}
