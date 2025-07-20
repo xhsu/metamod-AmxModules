@@ -187,3 +187,21 @@ export struct sv_iless_t final
 
 	using is_transparent = int;
 };
+
+export struct sv_icmp_t final
+{
+	struct nocase_compare
+	{
+		static bool operator()(char c1, char c2) noexcept
+		{
+			return std::tolower(c1) == std::tolower(c2);
+		}
+	};
+
+	static bool operator()(std::string_view const& lhs, std::string_view const& rhs) noexcept
+	{
+		return std::ranges::equal(lhs, rhs, nocase_compare{});
+	}
+
+	using is_transparent = int;
+};

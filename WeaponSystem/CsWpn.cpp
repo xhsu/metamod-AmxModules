@@ -273,7 +273,7 @@ struct CBasePistol : CPrefabWeapon
 		Precache();
 
 		m_iId = T::PROTOTYPE_ID;
-		g_engfuncs.pfnSetModel(CRTP()->edict(), T::MODEL_W);
+		CRTP()->SetWorldModel();
 
 		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
 			m_iWeaponState &= ~WPNSTATE_SHIELD_DRAWN;
@@ -308,8 +308,12 @@ struct CBasePistol : CPrefabWeapon
 		g_engfuncs.pfnPrecacheModel(T::MODEL_V);
 		Resource::Transcript(T::MODEL_V);
 
-		g_engfuncs.pfnPrecacheModel(T::MODEL_W);
-		g_engfuncs.pfnPrecacheModel(T::MODEL_P);
+		// Precache classical WP only if it's specified.
+		if constexpr (requires { T::FLAG_USING_OLD_PW; })
+		{
+			g_engfuncs.pfnPrecacheModel(T::MODEL_W);
+			g_engfuncs.pfnPrecacheModel(T::MODEL_P);
+		}
 
 		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
 		{
@@ -370,7 +374,6 @@ struct CBasePistol : CPrefabWeapon
 		m_pPlayer->TabulateAmmo();
 
 		m_pPlayer->pev->viewmodel = MAKE_STRING(T::MODEL_V);
-		model_name = m_pPlayer->pev->viewmodel;
 		m_Scheduler.Enroll(Task_WeaponAnim(pAnim), TASK_ANIMATION, true);	// Deploy anim.
 
 		CRTP()->UpdateThirdPersonModel(TASK_BEHAVIOR_DRAW);
@@ -382,6 +385,9 @@ struct CBasePistol : CPrefabWeapon
 
 			// P model for shield was put in UpdateThirdPersonModel()
 		}
+
+		// Don't know why Valve created this field..
+		CRTP()->model_name = m_pPlayer->pev->viewmodel;
 
 		m_pPlayer->m_flNextAttack = pAnim->GetTotalLength();
 		m_flTimeWeaponIdle = pAnim->GetTotalLength();
@@ -623,18 +629,10 @@ struct CBasePistol : CPrefabWeapon
 	// Addition: send wpn anim of the exact name. Won't random from a pool.
 	inline auto SendWeaponAnim(string_view anim, int iBody = 0, bool bSkipLocal = false) const noexcept -> TranscriptedSequence const*
 	{
-		string_view szViewModel{ T::MODEL_V };
-
-		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
-		{
-			if (m_pPlayer->HasShield())
-				szViewModel = T::MODEL_V_SHIELD;
-		}
-
 		try
 		{
 			auto const pSeq =
-				Resource::GetStudioTranscription(szViewModel)->AtSequence(anim);
+				Resource::GetStudioTranscription(STRING(m_pPlayer->pev->viewmodel))->AtSequence(anim);
 
 			m_pPlayer->pev->weaponanim = pSeq->m_index;
 
@@ -816,7 +814,7 @@ struct CBasePistol : CPrefabWeapon
 
 		if (!IsSilenced())
 		{
-			UTIL_DLight(vecGunOrigin, 4.5f, { 255, 150, 15 }, 8, 60);
+			//UTIL_DLight(vecGunOrigin, 4.5f, { 255, 150, 15 }, 0.8f, 15.f);
 
 			co_await TaskScheduler::NextFrame::Rank[0];
 			if (!m_pPlayer->IsAlive())
@@ -1009,22 +1007,14 @@ struct CBasePistol : CPrefabWeapon
 			case 6001:	// Gun smoke
 			{
 				m_Scheduler.Enroll(
-					[](CBasePlayer* pPlayer,
+					[](CBasePistol* pWeapon, CBasePlayer* pPlayer,
 						mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim,
 						bool bShootingLeft) static noexcept -> Task
 					{
 						co_await (pEvent->frame / pShootingAnim->m_fps);
 
 						// Expecting format: [VIEW_MODEL_ATTACHMENT] [PLAYER_MODEL_ATTACHMENT]
-						auto const EvOption = UTIL_SplitByBrackets(pEvent->options)
-							.or_else([&](string_view s) noexcept -> std::expected<std::vector<std::string_view>, std::string_view> {
-								g_engfuncs.pfnServerPrint(
-									std::format("[WSIV] QC Script Err - {}: {}: {}\n",
-										STRING(pPlayer->pev->viewmodel), pShootingAnim->m_szLabel , s
-									).c_str()
-								);
-								return std::unexpected(std::move(s));
-							});
+						auto const EvOption = pWeapon->ParseQcScript(pEvent, pShootingAnim);
 
 						if (!EvOption || EvOption->size() < 2)
 							co_return;
@@ -1038,7 +1028,7 @@ struct CBasePistol : CPrefabWeapon
 						);
 						CreateGunSmoke(pPlayer, vecMuzOfs, requires { T::FLAG_IS_PISTOL; }, bShootingLeft);
 
-					}(m_pPlayer, &Event, pShootingAnim, bShootingLeft)
+					}(this, m_pPlayer, &Event, pShootingAnim, bShootingLeft)
 				);
 				break;
 			}
@@ -1049,40 +1039,19 @@ struct CBasePistol : CPrefabWeapon
 						mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim,
 						bool bShootingLeft) static noexcept -> Task
 					{
-						co_await(pEvent->frame / pShootingAnim->m_fps);
+						co_await (pEvent->frame / pShootingAnim->m_fps);
 
 						// Expecting format: [ATTACHMENT_NUM] [vec3(FWD, RIGHT, UP)]
-						auto const EvOption = UTIL_SplitByBrackets(pEvent->options)
-							.or_else([&](string_view s) noexcept -> std::expected<std::vector<std::string_view>, std::string_view> {
-								g_engfuncs.pfnServerPrint(
-									std::format("[WSIV] QC Script Err - {}: {}: {}\n",
-										STRING(pPlayer->pev->viewmodel), pShootingAnim->m_szLabel , s
-									).c_str()
-								);
-								return std::unexpected(std::move(s));
-							});
+						auto EvOption = pWeapon->ParseQcScript(pEvent, pShootingAnim);
 
 						if (!EvOption || EvOption->size() < 2)
 							co_return;
 
-						auto const QcVeclocity = RunDynExpr(EvOption->at(1))
-							.and_then([&](std::any a) noexcept -> std::expected<Vector, std::string> {
-								try {
-									return std::any_cast<Vector>(std::move(a));
-								}
-								catch (const std::exception& e) {
-									return std::unexpected(e.what());
-								}
-							})
-							.or_else([&](string s) noexcept -> std::expected<Vector, std::string> {
-								g_engfuncs.pfnServerPrint(
-									std::format("[WSIV] QC Script Err - {}: {}: {}\n",
-										STRING(pPlayer->pev->viewmodel), pShootingAnim->m_szLabel , s
-									).c_str()
-								);
-								return std::unexpected(std::move(s));
-							});
+						// Handle default val
+						if (sv_icmp_t{}(EvOption->at(1), "default"))
+							EvOption->at(1) = "vec3(25, -rand(85, 110), rand(85, 110))";
 
+						auto const QcVeclocity = pWeapon->ExecuteQcScript<Vector>(EvOption->at(1), pShootingAnim);
 						if (!QcVeclocity)
 							co_return;
 
@@ -1094,6 +1063,53 @@ struct CBasePistol : CPrefabWeapon
 							(float)pEvent->frame
 						);
 						pWeapon->EjectBrass(vecEjtPortOfs, *QcVeclocity);
+
+					}(this, m_pPlayer, &Event, pShootingAnim, bShootingLeft)
+				);
+				break;
+			}
+			case 6003:	// DLight
+			{
+				m_Scheduler.Enroll(
+					[](CBasePistol* pWeapon, CBasePlayer* pPlayer,
+						mstudioevent_t const* pEvent, TranscriptedSequence const* pShootingAnim,
+						bool bShootingLeft) static noexcept -> Task
+					{
+						// Expecting format: [PL_ATTACHMENT] [RADIUS] [vec3(R, G, B)] [LIFE] [DECAY]
+						auto EvOption = pWeapon->ParseQcScript(pEvent, pShootingAnim);
+
+						// Handle default val.
+						if (EvOption && EvOption->size() == 2 && sv_icmp_t{}(EvOption->at(1), "default"))
+						{
+							// UTIL_DLight(vecGunOrigin, 4.5f, { 255, 150, 15 }, 0.8f, 15.f);
+							EvOption->at(1) = "4.5";
+							EvOption->push_back("vec3(255, 150, 15)");
+							EvOption->push_back("0.8");
+							EvOption->push_back("15");
+						}
+						else if (!EvOption || EvOption->size() < 5)
+							co_return;
+
+						co_await (pEvent->frame / pShootingAnim->m_fps);
+
+						auto const iPlayerAttIdx = UTIL_StrToNum<int>(EvOption->at(0));
+						auto const flRadius = UTIL_StrToNum<float>(EvOption->at(1));
+						auto const flLife = UTIL_StrToNum<float>(EvOption->at(3));
+						auto const flDecay = UTIL_StrToNum<float>(EvOption->at(4));
+
+						auto const QcColor = pWeapon->ExecuteQcScript<Vector>(EvOption->at(2), pShootingAnim);
+
+						if (!QcColor)
+							co_return;
+
+						Vector vecGunOrigin{};
+						g_engfuncs.pfnGetAttachment(pPlayer->edict(), iPlayerAttIdx, vecGunOrigin, nullptr);
+
+						UTIL_DLight(
+							vecGunOrigin, flRadius,
+							{ (uint8_t)std::lroundf(QcColor->x), (uint8_t)std::lroundf(QcColor->y), (uint8_t)std::lroundf(QcColor->z) },
+							flLife, flDecay
+						);
 
 					}(this, m_pPlayer, &Event, pShootingAnim, bShootingLeft)
 				);
@@ -1303,17 +1319,7 @@ public: // Materializing weapon, like CWeaponBox
 		else
 			pev->velocity = m_pPlayer->pev->velocity;	// Drop along with the dead guy.
 
-		if constexpr (requires { T::FLAG_USING_OLD_PW; })
-			g_engfuncs.pfnSetModel(edict(), T::MODEL_W);
-		else
-		{
-			auto const pInfo = CRTP()->GetCombinedModelInfo();
-			g_engfuncs.pfnSetModel(edict(), pInfo->m_szModel.data());
-			pev->angles = Angles::Upwards();
-			pev->sequence = pInfo->m_iSequence;
-			pev->body = pInfo->m_iWModelBodyVal;
-		}
-
+		CRTP()->SetWorldModel();
 		g_engfuncs.pfnSetSize(edict(), Vector{ -16, -16, -0.5f }, Vector{ 16, 16, 0.5f });
 		g_engfuncs.pfnSetOrigin(edict(), m_pPlayer->GetGunPosition() + m_pPlayer->pev->v_angle.Front() * 70);
 
@@ -1698,6 +1704,59 @@ public: // Materializing weapon, like CWeaponBox
 		}
 	}
 
+	void SetWorldModel() noexcept
+	{
+		if constexpr (requires { T::FLAG_USING_OLD_PW; })
+			g_engfuncs.pfnSetModel(CRTP()->edict(), CRTP()->MODEL_W);
+		else
+		{
+			auto const pInfo = CRTP()->GetCombinedModelInfo();
+			g_engfuncs.pfnSetModel(CRTP()->edict(), pInfo->m_szModel.data());
+			CRTP()->pev->angles = Angles::Upwards();
+			CRTP()->pev->sequence = pInfo->m_iSequence;
+			CRTP()->pev->body = pInfo->m_iWModelBodyVal;
+		}
+	}
+
+public:
+
+	auto ParseQcScript(mstudioevent_t const* pEvent, TranscriptedSequence const* pAnim) const noexcept -> std::expected<std::vector<std::string_view>, std::string_view>
+	{
+		auto EvOption = UTIL_SplitByBrackets(pEvent->options)
+			.or_else([&](string_view s) noexcept -> std::expected<std::vector<std::string_view>, std::string_view> {
+				g_engfuncs.pfnServerPrint(
+					std::format("[WSIV] QC Script Err - {}: {}: {}\n",
+						STRING(m_pPlayer->pev->viewmodel), pAnim->m_szLabel , s
+					).c_str()
+				);
+				return std::unexpected(std::move(s));
+			});
+
+		return std::move(EvOption);
+	}
+
+	template <typename R>
+	auto ExecuteQcScript(std::string_view szScript, TranscriptedSequence const* pAnim) const noexcept -> std::expected<R, std::string>
+	{
+		return RunDynExpr(szScript)
+			.and_then([&](std::any a) noexcept -> std::expected<R, std::string> {
+				try {
+					return std::any_cast<R>(std::move(a));
+				}
+				catch (const std::exception& e) {
+					return std::unexpected(e.what());
+				}
+			})
+			.or_else([&](string s) noexcept -> std::expected<R, std::string> {
+				g_engfuncs.pfnServerPrint(
+					std::format("[WSIV] QC Script Err - {}: {}: {}\n",
+						STRING(m_pPlayer->pev->viewmodel), pAnim->m_szLabel , s
+					).c_str()
+				);
+				return std::unexpected(std::move(s));
+			});
+	}
+
 public:
 	constexpr bool IsSilenced() const noexcept
 	{
@@ -1749,12 +1808,8 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 
 	static inline constexpr char MODEL_V[] = "models/v_glock18.mdl";
 	static inline constexpr char MODEL_V_SHIELD[] = "models/shield/v_shield_glock18.mdl";
-	static inline constexpr char MODEL_W[] = "models/w_glock18.mdl";
-	static inline constexpr char MODEL_P[] = "models/p_glock18.mdl";
 	static inline constexpr char MODEL_P_SHIELD[] = "models/shield/p_shield_glock18.mdl";
 	static inline constexpr char MODEL_SHELL[] = "models/pshell.mdl";
-
-	static inline constexpr char ANIM_3RD_PERSON[] = "onehanded";
 
 	struct AnimDat_Idle final {
 		static inline constexpr std::array KEYWORD{ "idle"sv, };
@@ -2004,9 +2059,9 @@ struct CPistolUSP : CBasePistol<CPistolUSP>
 	};
 	inline void EFFC_SND_FIRING() const noexcept {
 		if (m_iWeaponState & (WPNSTATE_USP_SILENCED | WPNSTATE_M4A1_SILENCED))
-			g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON, UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(), VOL_NORM, ATTN_IDLE, SND_FL_NONE, 94 + UTIL_Random(0, 0xf));
+			g_engfuncs.pfnEmitSound(m_pPlayer->edict(), CHAN_WEAPON, UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(), VOL_NORM, ATTN_IDLE, SND_FL_NONE, 94 + UTIL_Random(0, 0xf));
 		else
-			g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON, UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(), VOL_NORM, ATTN_NORM, SND_FL_NONE, 87 + UTIL_Random(0, 0x12));
+			g_engfuncs.pfnEmitSound(m_pPlayer->edict(), CHAN_WEAPON, UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(), VOL_NORM, ATTN_NORM, SND_FL_NONE, 87 + UTIL_Random(0, 0x12));
 	}
 
 	static inline constexpr auto FLAG_IS_PISTOL = true;
@@ -2111,7 +2166,7 @@ struct CPistolP228 : CBasePistol<CPistolP228>
 		m_pPlayer->pev->punchangle.pitch -= 2;
 	};
 	inline void EFFC_SND_FIRING() const noexcept {
-		g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON,
+		g_engfuncs.pfnEmitSound(m_pPlayer->edict(), CHAN_WEAPON,
 			UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(),
 			VOL_NORM, ATTN_NORM, SND_FL_NONE, UTIL_Random(94, 94 + 0xf)
 		);
@@ -2215,7 +2270,7 @@ struct CPistolDeagle : CBasePistol<CPistolDeagle>
 		m_pPlayer->pev->punchangle.pitch -= 2;
 	};
 	inline void EFFC_SND_FIRING() const noexcept {
-		g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON,
+		g_engfuncs.pfnEmitSound(m_pPlayer->edict(), CHAN_WEAPON,
 			UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(),
 			VOL_NORM, 0.6f, SND_FL_NONE, UTIL_Random(94, 94 + 0xf)
 		);
@@ -2319,7 +2374,7 @@ struct CPistolFN57 : CBasePistol<CPistolFN57>
 		m_pPlayer->pev->punchangle.pitch -= 2;
 	};
 	inline void EFFC_SND_FIRING() const noexcept {
-		g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON,
+		g_engfuncs.pfnEmitSound(m_pPlayer->edict(), CHAN_WEAPON,
 			UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(),
 			VOL_NORM, ATTN_NORM, SND_FL_NONE, UTIL_Random(94, 94 + 0xf)
 		);
@@ -2433,7 +2488,7 @@ struct CPistolBeretta : CBasePistol<CPistolBeretta>
 		m_pPlayer->pev->punchangle.pitch -= 2;
 	};
 	inline void EFFC_SND_FIRING() const noexcept {
-		g_engfuncs.pfnEmitSound(edict(), CHAN_WEAPON,
+		g_engfuncs.pfnEmitSound(m_pPlayer->edict(), CHAN_WEAPON,
 			UTIL_GetRandomOne(EXPR_FIRING_SND()).c_str(),
 			VOL_NORM, ATTN_NORM, SND_FL_NONE, UTIL_Random(94, 94 + 0xf)
 		);

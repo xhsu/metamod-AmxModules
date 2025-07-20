@@ -37,7 +37,7 @@ bool Buy_GunAmmo(CBasePlayer* pPlayer, CBasePlayerWeapon* pWeapon, bool bBlinkMo
 		if (pPlayer->GiveAmmo(pAmmoInfo->m_iMax, (char*)pAmmoInfo->m_szName.data(), pAmmoInfo->m_iMax) == -1)
 			return false;
 
-		g_engfuncs.pfnEmitSound(pWeapon->edict(), CHAN_ITEM, "items/9mmclip1.wav", VOL_NORM, ATTN_NORM, SND_FL_NONE, PITCH_NORM);
+		g_engfuncs.pfnEmitSound(pPlayer->edict(), CHAN_ITEM, "items/9mmclip1.wav", VOL_NORM, ATTN_NORM, SND_FL_NONE, PITCH_NORM);
 
 		Uranus::BasePlayer::AddAccount{}(pPlayer, -iCost);
 		return true;

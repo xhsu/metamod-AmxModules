@@ -82,7 +82,7 @@ namespace Resource
 		vector<move_only_function<void() noexcept>> m_Initializers{};
 		map<string_view, int32_t, RES_INTERNAL_sv_iless_t> m_Record{};
 		map<string, TranscriptedStudio, RES_INTERNAL_sv_iless_t> m_TranscriptedStudio{};
-		//unordered_set<string_view, std::hash<string_view>, CaseIgnoredCmp> m_Record{};
+		map<string_view, double, RES_INTERNAL_sv_iless_t> m_SoundLength{};
 	};
 
 	export bool Transcript(string_view szRelativePath) noexcept
@@ -161,7 +161,15 @@ namespace Resource
 			else if (std::ranges::ends_with(rgcName, ".wav", CaseIgnoredCmp{}))
 			{
 				Manager::Get().m_Initializers.emplace_back(
-					[&]() noexcept { m_Index = Manager::Get().m_Record[m_pszName] = g_engfuncs.pfnPrecacheSound(m_pszName); }
+					[&]() noexcept {
+						m_Index = Manager::Get().m_Record[m_pszName] = g_engfuncs.pfnPrecacheSound(m_pszName);
+
+						char szPath[256]{};
+						std::format_to_n(szPath, sizeof(szPath) - 1, "sound/{}", m_pszName);
+
+						auto const szAbsPath = FileSystem::GetAbsolutePath(szPath);
+						Manager::Get().m_SoundLength[m_pszName] = Wave::Length(szAbsPath.data());
+					}
 				);
 			}
 			else if (std::ranges::ends_with(rgcName, ".sc", CaseIgnoredCmp{}))
