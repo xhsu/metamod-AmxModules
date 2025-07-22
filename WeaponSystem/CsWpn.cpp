@@ -323,39 +323,38 @@ struct CBasePistol : CPrefabWeapon
 
 	void Precache() noexcept override
 	{
-		g_engfuncs.pfnPrecacheModel(T::MODEL_V);
-		Resource::Transcript(T::MODEL_V);
+		Resource::Precache(T::MODEL_V);
 
 		// Precache classical WP only if it's specified.
 		if constexpr (requires { T::FLAG_USING_OLD_PW; })
 		{
-			g_engfuncs.pfnPrecacheModel(T::MODEL_W);
-			g_engfuncs.pfnPrecacheModel(T::MODEL_P);
+			Resource::Precache(T::MODEL_W);
+			Resource::Precache(T::MODEL_P);
 		}
 
 		if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
 		{
-			g_engfuncs.pfnPrecacheModel(T::MODEL_V_SHIELD);
-			Resource::Transcript(T::MODEL_V_SHIELD);
+			Resource::Precache(T::MODEL_V_SHIELD);
 
-			g_engfuncs.pfnPrecacheModel(T::MODEL_P_SHIELD);
+			if constexpr (requires { T::FLAG_USING_OLD_PW; })
+				Resource::Precache(T::MODEL_P_SHIELD);
 		}
 
 		for (auto&& file : T::SOUND_ALL)
-			g_engfuncs.pfnPrecacheSound(file);
+			Resource::Precache(file);
 
 		for (auto&& file : CRTP()->EXPR_FIRING_SND())
-			g_engfuncs.pfnPrecacheSound(file.c_str());
+			Resource::Precache(file);
 
-		m_iShellId = /*m_iShell =*/ g_engfuncs.pfnPrecacheModel(T::MODEL_SHELL);
+		m_iShellId = /*m_iShell =*/ Resource::Precache(T::MODEL_SHELL);
 
 		if constexpr (requires { T::FLAG_DUAL_WIELDING; })
 		{
-			m_usFireEv = g_engfuncs.pfnPrecacheEvent(1, T::EV_FIRE_R);	// This goes first.
-			m_usFireEv2 = g_engfuncs.pfnPrecacheEvent(1, T::EV_FIRE_L);
+			m_usFireEv = Resource::Precache(T::EV_FIRE_R);	// This goes first.
+			m_usFireEv2 = Resource::Precache(T::EV_FIRE_L);
 		}
 		else
-			m_usFireEv = g_engfuncs.pfnPrecacheEvent(1, T::EV_FIRE);
+			m_usFireEv = Resource::Precache(T::EV_FIRE);
 
 		CRTP()->DAT_AMMUNITION = Ammo_Register(*CRTP()->DAT_AMMUNITION);
 

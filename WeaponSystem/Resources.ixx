@@ -149,18 +149,27 @@ namespace Resource
 	{
 		for (auto&& fn : Manager::Get().m_Initializers)
 			fn();
+	}
 
+	// For resource packer script.
+	export inline void LogToFile() noexcept
+	{
 		char szGameDir[32]{};
 		g_engfuncs.pfnGetGameDir(szGameDir);
 
-		std::filesystem::path szLogPath = szGameDir;
-		szLogPath /= "addons/metamod/logs/WSIV_Resources.log";
+		std::filesystem::path LogFilePath = szGameDir;
+		LogFilePath /= "addons/metamod/logs/WSIV_Resources.log";
+		auto const LogFolder = LogFilePath.parent_path();
 
-		if (!std::filesystem::exists(szLogPath.parent_path()))
-			std::filesystem::create_directories(szLogPath.parent_path());
+		if (!std::filesystem::exists(LogFolder))
+			std::filesystem::create_directories(LogFolder);
 
-		if (auto f = std::fopen(szLogPath.u8string().c_str(), "wt"); f)
+		auto const szLogFolder = std::filesystem::absolute(LogFolder).u8string();
+
+		if (auto f = std::fopen(LogFilePath.u8string().c_str(), "wt"); f)
 		{
+			std::print(f, "{}\n", szGameDir);
+
 			char szRelPath[256]{};
 			for (auto&& szKey : Manager::Get().m_Record | std::views::keys)
 			{
@@ -176,10 +185,10 @@ namespace Resource
 				}
 
 				auto const szAbsPath = FileSystem::GetAbsolutePath(szRelPath);
-				auto const szFormattedAbsPath = std::filesystem::absolute(szAbsPath.data()).u8string();
-				std::print(f, "{}{}\n",
-					szFormattedAbsPath,
-					FileSystem::m_pObject->FileExists(szRelPath) ? "" : "[MISSING]"
+				auto const szRelativeToLog = std::filesystem::relative(szAbsPath, LogFolder).u8string();
+				//auto const szFormattedAbsPath = std::filesystem::absolute(szAbsPath.data()).u8string();
+				std::print(f, "{}\\{}\n",
+					szLogFolder, szRelativeToLog
 				);
 			}
 
@@ -195,7 +204,8 @@ namespace Resource
 			return it->second;
 		}
 
-		// will encounter \0 problem with string_view.
+		// Must compare the char[] with another char[], sv with another sv.
+		// Or you will encounter \0 problem with string_view.
 
 		if (std::ranges::ends_with(szRelativePath, ".mdl"sv, CaseIgnoredCmp{}))
 		{
@@ -248,7 +258,7 @@ namespace Resource
 	export struct Add final
 	{
 		template <size_t N>
-		Add(const char(&rgcName)[N]) noexcept : m_pszName{ rgcName }
+		Add(const char(&rgcName)[N]) noexcept : m_pszName{ rgcName }, m_iLength{ N - 1 }
 		{
 			// Assume that this is a reference to array on heap, a.k.a. global variable.
 			if (auto const it = Manager::Get().m_Record.find(rgcName); it != Manager::Get().m_Record.end())
@@ -257,66 +267,19 @@ namespace Resource
 				return;
 			}
 
-			// Must compare the char[] with another char[],
-			// Or you will encounter \0 problem with string_view.
-
-			if (std::ranges::ends_with(rgcName, ".mdl", CaseIgnoredCmp{}))
-			{
-				Manager::Get().m_Initializers.emplace_back(
-					[&]() noexcept {
-						m_Index = Manager::Get().m_Record[m_pszName] = g_engfuncs.pfnPrecacheModel(m_pszName);
-						Transcript(m_pszName);
-					}
-				);
-			}
-			else if (std::ranges::ends_with(rgcName, ".spr", CaseIgnoredCmp{}))
-			{
-				Manager::Get().m_Initializers.emplace_back(
-					[&, rgcName]() noexcept {
-						m_Index = Manager::Get().m_Record[m_pszName] = g_engfuncs.pfnPrecacheModel(rgcName);
-						Transcript(rgcName);
-					}
-				);
-			}
-			else if (std::ranges::ends_with(rgcName, ".wav", CaseIgnoredCmp{}))
-			{
-				Manager::Get().m_Initializers.emplace_back(
-					[&]() noexcept {
-						m_Index = Manager::Get().m_Record[m_pszName] = g_engfuncs.pfnPrecacheSound(m_pszName);
-
-						char szPath[256]{};
-						std::format_to_n(szPath, sizeof(szPath) - 1, "sound/{}", m_pszName);
-
-						auto const szAbsPath = FileSystem::GetAbsolutePath(szPath);
-						Manager::Get().m_SoundLength[m_pszName] = Wave::Length(szAbsPath.data());
-					}
-				);
-			}
-			else if (std::ranges::ends_with(rgcName, ".sc", CaseIgnoredCmp{}))
-			{
-				Manager::Get().m_Initializers.emplace_back(
-					[&]() noexcept { m_Index = Manager::Get().m_Record[m_pszName] = g_engfuncs.pfnPrecacheEvent(1, m_pszName); }	// #INVESTIGATE what does the first argument mean?
-				);
-			}
-			else [[unlikely]]
-			{
-				Manager::Get().m_Initializers.emplace_back(
-					[&]() noexcept { m_Index = Manager::Get().m_Record[m_pszName] = g_engfuncs.pfnPrecacheGeneric(m_pszName); }
-				);
-
-				assert((
-					std::ranges::ends_with(rgcName, ".txt", CaseIgnoredCmp{})
-					|| std::ranges::ends_with(rgcName, ".tga", CaseIgnoredCmp{})
-					|| std::ranges::ends_with(rgcName, ".res", CaseIgnoredCmp{})
-				));
-			}
+			Manager::Get().m_Initializers.emplace_back(
+				[&]() noexcept {
+					m_Index = Precache(m_pszName);
+				}
+			);
 		}
 
 		const char* m_pszName{};
+		size_t m_iLength{};
 		int32_t m_Index{};
 
 		inline operator int32_t() const noexcept { return m_Index; }
 		inline operator const char* () const noexcept { return m_pszName; }
-		inline operator string_view () const noexcept { return m_pszName; }
+		inline operator string_view () const noexcept { return string_view{ m_pszName, m_iLength }; }
 	};
 }

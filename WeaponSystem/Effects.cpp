@@ -164,19 +164,6 @@ struct CGunSmoke : Prefab_t
 	static inline constexpr char CLASSNAME[] = "env_gun_smoke";
 	static inline constexpr double FPS = 30.0;
 
-	static inline Resource::Add RifleSmokes[] =
-	{
-		"sprites/rifle_smoke1.spr",
-		"sprites/rifle_smoke2.spr",
-		"sprites/rifle_smoke3.spr",
-	};
-
-	static inline Resource::Add PistolSmokes[] =
-	{
-		"sprites/pistol_smoke1.spr",
-		"sprites/pistol_smoke2.spr",
-	};
-
 	// Owns the string so we can pass them into Resource::Precache.
 	static inline std::map<std::string_view, std::vector<std::string>, sv_iless_t> m_SmokeSpriteList;
 
@@ -267,6 +254,9 @@ void UpdateGunSmokeList(std::string_view szSmokeNameRoot) noexcept
 	}
 	else
 		SpriteList.push_back(std::move(szName));
+
+	for (auto&& szSprite : SpriteList)
+		Resource::Precache(szSprite);
 }
 
 edict_t* CreateGunSmoke(CBasePlayer* pPlayer, Vector const& vecMuzzleOfs, std::string_view szSmokeNameRoot, int iPlayerAttIdx) noexcept

@@ -365,6 +365,9 @@ FodyWeavers.xsd
 # model - mdl file
 ProjectPWB/**/*.mdl
 
+# Packed resources
+ResourcePacker/*.7z
+
 # Discontinued projects.
 RendererSv/*
 Pathfinder/Resources/*

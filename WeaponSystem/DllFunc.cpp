@@ -79,6 +79,8 @@ void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) 
 	RetrieveEngineStudio();
 	ResetAllSlotManagers();
 
+	Resource::LogToFile();
+
 	DeployRoundHook();	// Do it after retrieving gamerules
 }
 

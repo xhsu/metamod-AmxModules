@@ -63,7 +63,7 @@ export void PrecacheCombinedModels() noexcept
 		// Just reprecache during server reloading
 		g_rgiCombinedModelIndeces.clear();
 		for (auto&& szModel : g_rgszCombinedModels)
-			g_rgiCombinedModelIndeces.push_back(g_engfuncs.pfnPrecacheModel(szModel.c_str()));
+			g_rgiCombinedModelIndeces.push_back(Resource::Precache(szModel));
 
 		return;
 	}
@@ -84,8 +84,7 @@ export void PrecacheCombinedModels() noexcept
 
 	for (auto&& szModel : g_rgszCombinedModels)
 	{
-		g_rgiCombinedModelIndeces.push_back(g_engfuncs.pfnPrecacheModel(szModel.c_str()));
-		Resource::Transcript(szModel);
+		g_rgiCombinedModelIndeces.push_back(Resource::Precache(szModel));
 
 		auto const pTranscription = Resource::GetStudioTranscription(szModel);
 		assert(pTranscription != nullptr);
