@@ -104,3 +104,13 @@ void DynExprBindVector(string_view name, Vector const& vec) noexcept
 {
 	DynExpr::BindConstant<Vector>(name, vec);
 }
+
+void DynExprBindNum(string_view name, double num) noexcept
+{
+	DynExpr::BindConstant<double>(name, num);
+}
+
+void DynExprUnbind(string_view name) noexcept
+{
+	DynExpr::BindConstant<void>(name);
+}

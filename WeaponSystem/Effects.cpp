@@ -201,24 +201,29 @@ struct CGunSmoke : Prefab_t
 		pev->gravity = 0;
 		pev->scale = UTIL_Random(0.2f, 0.35f);
 		pev->owner = m_pPlayer->edict();
+		pev->velocity = Vector{ 0, 0, 20 };
 
 		auto const& GunSmokeSpr = UTIL_GetRandomOne(m_SmokeSpriteList.at(m_szSmokeNameRoot));
 		g_engfuncs.pfnSetModel(edict(), GunSmokeSpr.c_str());
 
+		auto const vecPredictOrg =
+			m_pPlayer->pev->origin + m_pPlayer->pev->velocity * gpGlobals->frametime * 10;	// Magic number.
+
 		auto&& [fwd, right, up]
 			= (m_pPlayer->pev->v_angle + m_pPlayer->pev->punchangle).AngleVectors();
-		g_engfuncs.pfnSetOrigin(edict(), m_pPlayer->pev->origin + m_pPlayer->pev->view_ofs + up * m_vecViewModelMuzzle.z + fwd * m_vecViewModelMuzzle.x + right * m_vecViewModelMuzzle.y);
+		g_engfuncs.pfnSetOrigin(edict(), vecPredictOrg + m_pPlayer->pev->view_ofs + up * m_vecViewModelMuzzle.z + fwd * m_vecViewModelMuzzle.x + right * m_vecViewModelMuzzle.y);
 
 		m_Scheduler.Enroll(Task_SpritePlayOnce(pev, Resource::GetSpriteTranscription(GunSmokeSpr)->m_iNumOfFrames, FPS), TASK_ANIMATION);
-		m_Scheduler.Enroll(Task_FadeOut(pev, 0.f, 1.f, 0.07f, UTIL_Random(0.65f, 0.85f)), TASK_FADE_OUT);
+		m_Scheduler.Enroll(Task_FadeOut(pev, 0.f, 1.1f, 0.07f, UTIL_Random(0.65f, 0.85f)), TASK_FADE_OUT);
 		//m_Scheduler.Enroll(Task_TellMeWhere(m_pPlayer, m_vecViewModelMuzzle));
-		m_Scheduler.Enroll(Task_UpdateFirstPersonalPos(), TASK_FOLLOWING);
+		//m_Scheduler.Enroll(Task_UpdateFirstPersonalPos(), TASK_FOLLOWING);
 	}
 
 	Task Task_UpdateFirstPersonalPos() noexcept
 	{
 		for (; m_pPlayer && m_pPlayer->IsAlive(); co_await TaskScheduler::NextFrame::Rank[0])
 		{
+			/*
 			auto&& [fwd, right, up]
 				= m_pPlayer->pev->v_angle.AngleVectors();
 
@@ -227,7 +232,8 @@ struct CGunSmoke : Prefab_t
 				+ up * m_vecViewModelMuzzle.z + fwd * m_vecViewModelMuzzle.x + right * m_vecViewModelMuzzle.y;
 
 			g_engfuncs.pfnSetOrigin(this->edict(), vecOrigin);
-			pev->velocity = m_pPlayer->pev->velocity + m_pPlayer->pev->basevelocity;
+			*/
+			pev->velocity = m_pPlayer->pev->velocity * 1.1 + m_pPlayer->pev->basevelocity + Vector{ 0, 0, 20 };
 		}
 	}
 

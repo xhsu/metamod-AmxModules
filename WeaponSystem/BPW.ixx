@@ -207,7 +207,7 @@ export void PrecacheCombinedModels() noexcept
 	}
 }
 
-extern "C++" inline Resource::Add SHIELD_COLLECTION = { "models/Shield/p_shield_001.mdl" };
+extern "C++" inline Resource::Add SHIELD_COLLECTION{ "models/Shield/p_shield_001.mdl" };
 extern "C++" inline std::vector<BodyEnumInfo_t> g_ShieldModelBodyInfo = {};
 
 export void PrecacheShieldModel() noexcept

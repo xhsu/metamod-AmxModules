@@ -63,6 +63,12 @@ enum EWeaponTaskFlags2 : std::uint64_t
 	TASK_MATERIALIZED_UNSET_OWNER = (1ull << 24),
 
 	TASK_ALL_MATERIALIZED = TASK_ALL_WEAKS << 8,
+
+	TASK_EQCEV_EF_MUZZLE_SMOKE = (1ull << 32),
+	TASK_EQCEV_EF_EJECT_SHELL = (1ull << 33),
+	TASK_EQCEV_EF_MUZZLE_LIGHT = (1ull << 34),
+
+	TASK_EQCEV_DT_CLIP = (1ull << 40),
 };
 
 enum EExtendedQcEvents : int32_t
@@ -173,6 +179,8 @@ extern Vector2D CS_FireBullets3(
 
 extern auto RunDynExpr(string_view szExpr) noexcept -> std::expected<std::any, string>;
 extern void DynExprBindVector(string_view name, Vector const& vec) noexcept;
+extern void DynExprBindNum(string_view name, double num) noexcept;
+extern void DynExprUnbind(string_view name) noexcept;
 
 template <typename CWeapon, typename AnimDat>
 struct CAnimationGroup final
@@ -419,7 +427,7 @@ struct CBasePistol : CPrefabWeapon
 		// Don't know why Valve created this field..
 		CRTP()->model_name = m_pPlayer->pev->viewmodel;
 
-		m_pPlayer->m_flNextAttack = pAnim->GetTotalLength();
+		m_pPlayer->m_flNextAttack = 0;//pAnim->GetTotalLength();
 		m_flTimeWeaponIdle = pAnim->GetTotalLength();
 		m_flLastFireTime = 0.0f;
 		m_flDecreaseShotsFired = gpGlobals->time;
@@ -429,7 +437,7 @@ struct CBasePistol : CPrefabWeapon
 		m_pPlayer->m_iLastZoom = DEFAULT_FOV;
 		m_pPlayer->m_bResumeZoom = false;
 
-		co_await m_pPlayer->m_flNextAttack;
+		co_await pAnim->GetTotalLength();
 
 		// Start ItemPostFrame and Idle here.
 		m_Scheduler.Enroll(Task_ItemPostFrame(), TASK_ALL_MONITORS, true);
@@ -1036,10 +1044,14 @@ struct CBasePistol : CPrefabWeapon
 		if (!j)
 			co_return;
 
+		// Reload QC scripts
+		CRTP()->DispatchQcEvents(pReloadAnim);
+		bool const bAnyScriptedReloadEv = CRTP()->m_Scheduler.Exist(TASK_EQCEV_DT_CLIP);
+
 		auto const flAnimTotalLen = pReloadAnim->GetTotalLength();
 		auto const flAnimFreezeEnds = pReloadAnim->GetTimeAfterLastWav() == -1 ? flAnimTotalLen : pReloadAnim->GetTimeAfterLastWav();
 
-		m_pPlayer->m_flNextAttack = flAnimFreezeEnds;
+		m_pPlayer->m_flNextAttack = 0;//flAnimFreezeEnds;
 
 		ReloadSound();
 		SendWeaponAnim(pReloadAnim->m_index);
@@ -1051,8 +1063,11 @@ struct CBasePistol : CPrefabWeapon
 		co_await flAnimFreezeEnds;
 
 		// Add them to the clip
-		m_iClip += j;
-		m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType] -= j;
+		if (!bAnyScriptedReloadEv)
+		{
+			m_iClip += j;
+			m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType] -= j;
+		}
 
 		m_pPlayer->TabulateAmmo();
 		m_fInReload = false;
@@ -1502,7 +1517,7 @@ public: // Materializing weapon, like CWeaponBox
 				m_pPlayer->pev->weaponmodel = MAKE_STRING(T::MODEL_P);
 				this->pev->effects |= EF_NODRAW;	// Hide this entity and using standard P model.
 
-				strncpy(m_pPlayer->m_szAnimExtention, T::ANIM_3RD_PERSON, sizeof(m_pPlayer->m_szAnimExtention) - 1);
+				strcpy(m_pPlayer->m_szAnimExtention, T::ANIM_3RD_PERSON);
 				*std::ranges::rbegin(m_pPlayer->m_szAnimExtention) = '\0';
 
 				if constexpr (requires { T::FLAG_CAN_HAVE_SHIELD; })
@@ -1524,6 +1539,7 @@ public: // Materializing weapon, like CWeaponBox
 				break;
 			}
 			default: [[unlikely]]
+				assert(false);
 				break;
 			}
 		}
@@ -1555,6 +1571,7 @@ public: // Materializing weapon, like CWeaponBox
 						{
 							g_engfuncs.pfnSetModel(CRTP()->edict(), pShieldInfo->m_szModel.data());
 							strncpy(m_pPlayer->m_szAnimExtention, pShieldInfo->m_szPlayerAnim.data(), pShieldInfo->m_szPlayerAnim.size());
+							m_pPlayer->m_szAnimExtention[pShieldInfo->m_szPlayerAnim.size()] = '\0';
 
 							pev->body = pShieldInfo->m_iBodyVal;
 							pev->sequence = pShieldInfo->m_iSequence;
@@ -1576,6 +1593,7 @@ public: // Materializing weapon, like CWeaponBox
 				break;
 			}
 			default: [[unlikely]]
+				assert(false);
 				break;
 			}
 		}
@@ -1596,6 +1614,20 @@ public: // Materializing weapon, like CWeaponBox
 	}
 
 public:
+
+	[[nodiscard]] bool ShouldQcEventResume(int iAnimIndex) const noexcept
+	{
+		if (!m_pPlayer || !m_pPlayer->IsAlive())
+			return false;
+
+		if (m_pPlayer->m_pActiveItem != this)
+			return false;
+
+		if (m_pPlayer->pev->weaponanim != iAnimIndex)
+			return false;
+
+		return true;
+	}
 
 	auto ParseQcScript(mstudioevent_t const* pEvent, TranscriptedSequence const* pAnim) const noexcept -> std::expected<std::vector<std::string_view>, std::string_view>
 	{
@@ -1649,7 +1681,7 @@ public:
 					{
 						co_await (pEvent->frame / pAnim->m_fps);
 
-						if (!pPlayer->IsAlive())
+						if (!pWeapon->ShouldQcEventResume(pAnim->m_index))
 							co_return;
 
 						// Expecting format: [VIEW_MODEL_ATTACHMENT] [PLAYER_MODEL_ATTACHMENT] [SPRITE_CANDIDATES]
@@ -1670,7 +1702,8 @@ public:
 
 						CreateGunSmoke(pPlayer, vecMuzOfs, szGunSmoke, iPlayerAtt);
 
-					}(this, m_pPlayer, &Event, pAnim)
+					}(this, m_pPlayer, &Event, pAnim),
+					TASK_EQCEV_EF_MUZZLE_SMOKE
 				);
 				break;
 			}
@@ -1683,7 +1716,7 @@ public:
 					{
 						co_await (pEvent->frame / pAnim->m_fps);
 
-						if (!pPlayer->IsAlive())
+						if (!pWeapon->ShouldQcEventResume(pAnim->m_index))
 							co_return;
 
 						// Expecting format: [ATTACHMENT_NUM] [vec3(FWD, RIGHT, UP)]
@@ -1709,7 +1742,8 @@ public:
 						);
 						pWeapon->EjectBrass(vecEjtPortOfs, *QcVeclocity);
 
-					}(this, m_pPlayer, &Event, pAnim)
+					}(this, m_pPlayer, &Event, pAnim),
+					TASK_EQCEV_EF_EJECT_SHELL
 				);
 				break;
 			}
@@ -1737,7 +1771,7 @@ public:
 
 						co_await (pEvent->frame / pAnim->m_fps);
 
-						if (!pPlayer->IsAlive())
+						if (!pWeapon->ShouldQcEventResume(pAnim->m_index))
 							co_return;
 
 						auto const iPlayerAttIdx = UTIL_StrToNum<int>(EvOption->at(0));
@@ -1758,10 +1792,71 @@ public:
 							flLife, flDecay
 						);
 
-					}(this, m_pPlayer, &Event, pAnim)
+					}(this, m_pPlayer, &Event, pAnim),
+					TASK_EQCEV_EF_MUZZLE_LIGHT
 				);
 				break;
 			}
+
+			case EQCEV_DT_CLIP:
+			{
+				m_Scheduler.Enroll(
+					[](CBasePistol* pWeapon, CBasePlayer* pPlayer,
+						mstudioevent_t const* pEvent, TranscriptedSequence const* pAnim
+						) static noexcept -> Task
+					{
+						// Expecting format: [NEW_CLIP_NUM] [NEW_AMMO_NUM]
+						auto EvOption = pWeapon->ParseQcScript(pEvent, pAnim);
+
+						if (!EvOption || EvOption->empty())
+							co_return;
+
+						if (EvOption->size() == 1 && sv_icmp_t{}(EvOption->at(0), "default"))
+							EvOption->at(0) = "-min(MAXCLIP - CLIP, AMMO)";
+
+						co_await (pEvent->frame / pAnim->m_fps);
+
+						if (!pWeapon->ShouldQcEventResume(pAnim->m_index) || pPlayer != pWeapon->m_pPlayer)
+							co_return;
+
+						DynExprBindNum("CLIP", pWeapon->m_iClip);
+						DynExprBindNum("AMMO", pPlayer->m_rgAmmo[pWeapon->m_iPrimaryAmmoType]);
+						DynExprBindNum("MAXCLIP", T::DAT_MAX_CLIP);
+
+						if (EvOption->size() >= 2)
+						{
+							auto const QcNewClip = pWeapon->ExecuteQcScript<double>(EvOption->at(0), pAnim);
+							auto const QcNewAmmo = pWeapon->ExecuteQcScript<double>(EvOption->at(1), pAnim);
+
+							if (QcNewClip)
+								pWeapon->m_iClip = std::lround(*QcNewClip);
+							if (QcNewAmmo)
+								pPlayer->m_rgAmmo[pWeapon->m_iPrimaryAmmoType] = std::lround(*QcNewAmmo);
+						}
+						else if (EvOption->size() >= 1)
+						{
+							auto const QcMagDiff = pWeapon->ExecuteQcScript<double>(EvOption->at(0), pAnim);
+
+							if (QcMagDiff)
+							{
+								auto const iMagDiff = std::lround(*QcMagDiff);
+								pWeapon->m_iClip -= iMagDiff;
+								pPlayer->m_rgAmmo[pWeapon->m_iPrimaryAmmoType] += iMagDiff;
+							}
+						}
+
+						DynExprUnbind("CLIP");
+						DynExprUnbind("AMMO");
+						DynExprUnbind("MAXCLIP");
+
+					}(this, m_pPlayer, &Event, pAnim),
+					TASK_EQCEV_DT_CLIP
+				);
+				break;
+
+				break;
+			}
+
 			default:
 				break;
 			}
