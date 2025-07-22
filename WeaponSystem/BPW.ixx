@@ -35,7 +35,7 @@ struct CMaterializedWeaponModelInfoCell final
 {
 	string_view m_szModel{};
 
-	string m_szPlayerAnim{};
+	string_view m_szPlayerAnim{};
 	int m_iSequence{ -1 };
 
 	int m_iBodyVal{ -1 };
@@ -68,11 +68,18 @@ export void PrecacheCombinedModels() noexcept
 		return;
 	}
 
+	char szPath[64]{};
 	for (int i = 0; i < 128; ++i)
 	{
-		auto szModel = std::format("models/WSIV/bpw_{:0>3}.mdl", i);
-		if (FileSystem::m_pObject->FileExists(szModel.c_str()))
-			g_rgszCombinedModels.emplace_back(std::move(szModel));
+		auto const res =
+			std::format_to_n(
+				szPath, sizeof(szPath) - 1,
+				"models/WSIV/bpw_{:0>3}.mdl", i
+			);
+		szPath[res.size] = '\0';
+
+		if (FileSystem::m_pObject->FileExists(szPath))
+			g_rgszCombinedModels.emplace_back(&szPath[0], &szPath[res.size]);
 	}
 
 	for (auto&& szModel : g_rgszCombinedModels)
@@ -198,4 +205,82 @@ export void PrecacheCombinedModels() noexcept
 			szError.c_str()
 		);
 	}
+}
+
+extern "C++" inline Resource::Add SHIELD_COLLECTION = { "models/Shield/p_shield_001.mdl" };
+extern "C++" inline std::vector<BodyEnumInfo_t> g_ShieldModelBodyInfo = {};
+
+export void PrecacheShieldModel() noexcept
+{
+	Resource::Precache(SHIELD_COLLECTION);
+
+	static bool bPrecached = false;
+	if (bPrecached)
+		return;
+
+	bPrecached = true;
+
+	auto const pModelTranscript = Resource::GetStudioTranscription(SHIELD_COLLECTION);
+
+	g_ShieldModelBodyInfo.resize(pModelTranscript->m_Parts.size());
+	for (int i = 0; i < std::ssize(g_ShieldModelBodyInfo); ++i)
+		g_ShieldModelBodyInfo[i].m_total = (int)pModelTranscript->m_Parts[i].m_SubModels.size();
+}
+
+int ShieldModelSetup(std::string_view szKey, std::string_view szValue) noexcept
+{
+	auto const pModelTranscript = Resource::GetStudioTranscription(SHIELD_COLLECTION);
+
+	for (auto&& [iPartIndex, Part] : std::views::enumerate(pModelTranscript->m_Parts))
+	{
+		if (!sv_icmp_t{}(Part.m_szName, szKey))
+			continue;
+
+		for (auto&& [iMeshIndex, Mesh] : std::views::enumerate(Part.m_SubModels))
+		{
+			if (sv_icmp_t{}(Mesh.m_szName, szValue))
+			{
+				g_ShieldModelBodyInfo[iPartIndex].m_index = iMeshIndex;
+				return UTIL_CalcBody(g_ShieldModelBodyInfo);
+			}
+		}
+	}
+
+	return -1;
+}
+
+export [[nodiscard]] auto ShieldGetWeaponInfo(std::string_view szWeapon) noexcept -> std::expected<CMaterializedWeaponModelInfoCell, std::string>
+{
+	auto const pModelTranscript = Resource::GetStudioTranscription(SHIELD_COLLECTION);
+
+	for (auto&& Seq : pModelTranscript->m_Sequences)
+	{
+		// Preventing matching with '\0'
+		std::string_view const szLabel{ Seq.m_szLabel };
+		if (std::ranges::ends_with(szLabel, szWeapon, ch_icmp_t{}))
+		{
+			auto const pos = szLabel.find_first_of('_');
+			if (pos == szLabel.npos)
+				return std::unexpected(std::format("Bad sequence name '{}'", szLabel));
+
+			auto const szPlayerAnimGroup = std::format("p_{}", szLabel.substr(0, pos));
+			auto const szBody = std::format("p_{}", szLabel.substr(pos + 1));
+
+			int iBodyVal = -1;
+			iBodyVal = ShieldModelSetup("shield", szPlayerAnimGroup);
+			iBodyVal = ShieldModelSetup("shield_weapons", szBody);
+
+			if (iBodyVal < 0)
+				return std::unexpected(std::format("Cannot setup pev->body with info '{}' and '{}'", szPlayerAnimGroup, szBody));
+
+			return CMaterializedWeaponModelInfoCell{
+				.m_szModel{ SHIELD_COLLECTION },
+				.m_szPlayerAnim{ szLabel.substr(0, pos) },
+				.m_iSequence{ Seq.m_index },
+				.m_iBodyVal{ iBodyVal },
+			};
+		}
+	}
+
+	return std::unexpected(std::format("No matching info for '{}'", szWeapon));
 }

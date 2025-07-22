@@ -38,6 +38,14 @@ META_RES OnClientCommand(CBasePlayer* pPlayer, std::string_view szCmd) noexcept
 		pEdict->v.flags |= FL_KILLME;
 		return MRES_SUPERCEDE;
 	}
+	else if (szCmd == "give_shield")
+	{
+		if (pPlayer->HasShield())
+			return MRES_SUPERCEDE;
+
+		pPlayer->GiveShield();
+		return MRES_SUPERCEDE;
+	}
 
 	return MRES_IGNORED;
 }

@@ -22,6 +22,7 @@ import ZBot;
 import Studio;
 
 import BPW;
+import WpnIdAllocator;
 
 import Hook;
 import Plugin;
@@ -76,6 +77,7 @@ void fw_ServerActivate_Post(edict_t* pEdictList, int edictCount, int clientMax) 
 	Decal::RetrieveIndices();
 	ZBot::RetrieveManager();
 	RetrieveEngineStudio();
+	ResetAllSlotManagers();
 
 	DeployRoundHook();	// Do it after retrieving gamerules
 }
@@ -107,6 +109,7 @@ auto fw_Spawn(edict_t* pEdict) noexcept -> qboolean
 
 	Resource::PrecacheEverything();
 	PrecacheCombinedModels();
+	PrecacheShieldModel();
 
 	g_bShouldPrecache = false;
 	return 0;

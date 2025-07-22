@@ -48,6 +48,51 @@ inline constexpr auto ONEHANDED_IDX_BITSET = UTIL_BuildBitMaskForWeaponId(ONEHAN
 inline constexpr auto PISTOLS_IDX_BITSET = UTIL_BuildBitMaskForWeaponId(PISTOLS_IDX);
 inline constexpr auto FULL_AUTO_IDX_BITSET = UTIL_BuildBitMaskForWeaponId(FULL_AUTO_IDX);
 
+[[nodiscard]] constexpr
+auto BuildInitSlotOccupied(std::span<WeaponIdType const> rgiOpenedSlots = {}) noexcept
+	-> std::array<std::string_view, 31>
+{
+	std::array<std::string_view, 31> ret{
+		"WEAPON_NONE",
+		"WEAPON_P228",
+		"WEAPON_NIL",
+		"WEAPON_SCOUT",
+		"WEAPON_HEGRENADE",
+		"WEAPON_XM1014",
+		"WEAPON_C4",
+		"WEAPON_MAC10",
+		"WEAPON_AUG",
+		"WEAPON_SMOKEGRENADE",
+		"WEAPON_ELITE",
+		"WEAPON_FIVESEVEN",
+		"WEAPON_UMP45",
+		"WEAPON_SG550",
+		"WEAPON_GALIL",
+		"WEAPON_FAMAS",
+		"WEAPON_USP",
+		"WEAPON_GLOCK18",
+		"WEAPON_AWP",
+		"WEAPON_MP5N",
+		"WEAPON_M249",
+		"WEAPON_M3",
+		"WEAPON_M4A1",
+		"WEAPON_TMP",
+		"WEAPON_G3SG1",
+		"WEAPON_FLASHBANG",
+		"WEAPON_DEAGLE",
+		"WEAPON_SG552",
+		"WEAPON_AK47",
+		"WEAPON_KNIFE",
+		"WEAPON_P90",
+	};
+
+	for (auto&& iId : rgiOpenedSlots)
+		ret[iId] = "";
+
+	return ret;
+}
+
+
 // Math Tools
 
 [[nodiscard]] constexpr int UTIL_FindRightmostZeroBit(std::unsigned_integral auto n)
@@ -158,52 +203,17 @@ struct ItemSlotManager
 
 		return iId;
 	}
+
+	constexpr void Reset(this auto&& self) noexcept
+	{
+		self.m_iOrderInSlot = T::SLOT_ITEMS_COUNT + 1;
+		self.m_iAllocatorHead = 0;
+
+		// m_pPlayer was ignored.
+
+		self.m_rgszSlotOccupied = ::BuildInitSlotOccupied(T::SLOT_PROTOTYPES_IDX);
+	}
 };
-
-[[nodiscard]] constexpr
-auto BuildInitSlotOccupied(std::span<WeaponIdType const> rgiOpenedSlots = {}) noexcept
-	-> std::array<std::string_view, 31>
-{
-	std::array<std::string_view, 31> ret{
-		"WEAPON_NONE",
-		"WEAPON_P228",
-		"WEAPON_NIL",
-		"WEAPON_SCOUT",
-		"WEAPON_HEGRENADE",
-		"WEAPON_XM1014",
-		"WEAPON_C4",
-		"WEAPON_MAC10",
-		"WEAPON_AUG",
-		"WEAPON_SMOKEGRENADE",
-		"WEAPON_ELITE",
-		"WEAPON_FIVESEVEN",
-		"WEAPON_UMP45",
-		"WEAPON_SG550",
-		"WEAPON_GALIL",
-		"WEAPON_FAMAS",
-		"WEAPON_USP",
-		"WEAPON_GLOCK18",
-		"WEAPON_AWP",
-		"WEAPON_MP5N",
-		"WEAPON_M249",
-		"WEAPON_M3",
-		"WEAPON_M4A1",
-		"WEAPON_TMP",
-		"WEAPON_G3SG1",
-		"WEAPON_FLASHBANG",
-		"WEAPON_DEAGLE",
-		"WEAPON_SG552",
-		"WEAPON_AK47",
-		"WEAPON_KNIFE",
-		"WEAPON_P90",
-	};
-
-	for (auto&& iId : rgiOpenedSlots)
-		ret[iId] = "";
-
-	return ret;
-}
-
 
 // Manager Classes
 
@@ -218,6 +228,7 @@ struct PistolSlotManager : ItemSlotManager<PistolSlotManager>
 
 	using ItemSlotManager<PistolSlotManager>::AnyFreeSlot;
 	using ItemSlotManager<PistolSlotManager>::AllocSlot;
+	using ItemSlotManager<PistolSlotManager>::Reset;
 };
 
 inline constinit std::array<PistolSlotManager, 33> g_rgPlayerPistolMgrs{};
@@ -233,6 +244,7 @@ struct FullAutoSlotManager : ItemSlotManager<FullAutoSlotManager>
 
 	using ItemSlotManager<FullAutoSlotManager>::AnyFreeSlot;
 	using ItemSlotManager<FullAutoSlotManager>::AllocSlot;
+	using ItemSlotManager<FullAutoSlotManager>::Reset;
 };
 
 inline constinit std::array<FullAutoSlotManager, 33> g_rgPlayerFullAutoMgrs{};
@@ -279,4 +291,13 @@ export template <WeaponIdType PROTOTYPE_ID>
 	{
 		return nullptr;
 	}
+}
+
+export constexpr void ResetAllSlotManagers() noexcept
+{
+	for (auto&& mgr : g_rgPlayerPistolMgrs)
+		mgr.Reset();
+
+	for (auto&& mgr : g_rgPlayerFullAutoMgrs)
+		mgr.Reset();
 }

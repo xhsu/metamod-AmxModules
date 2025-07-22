@@ -35,6 +35,7 @@ studio "p_shieldgren"
 
 $bodygroup "shield_weapons"
 {
+blank
 studio "p_shield_deagle"
 studio "p_shield_fiveseven"
 studio "p_shield_glock18"
