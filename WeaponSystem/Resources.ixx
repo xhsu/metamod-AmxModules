@@ -149,6 +149,42 @@ namespace Resource
 	{
 		for (auto&& fn : Manager::Get().m_Initializers)
 			fn();
+
+		char szGameDir[32]{};
+		g_engfuncs.pfnGetGameDir(szGameDir);
+
+		std::filesystem::path szLogPath = szGameDir;
+		szLogPath /= "addons/metamod/logs/WSIV_Resources.log";
+
+		if (!std::filesystem::exists(szLogPath.parent_path()))
+			std::filesystem::create_directories(szLogPath.parent_path());
+
+		if (auto f = std::fopen(szLogPath.u8string().c_str(), "wt"); f)
+		{
+			char szRelPath[256]{};
+			for (auto&& szKey : Manager::Get().m_Record | std::views::keys)
+			{
+				if (std::ranges::ends_with(szKey, ".wav"sv, CaseIgnoredCmp{}))
+				{
+					auto const res = std::format_to_n(szRelPath, sizeof(szRelPath) - 1, "sound/{}", szKey);
+					szRelPath[res.size] = '\0';
+				}
+				else
+				{
+					std::strncpy(szRelPath, szKey.data(), szKey.length());
+					szRelPath[szKey.length()] = '\0';
+				}
+
+				auto const szAbsPath = FileSystem::GetAbsolutePath(szRelPath);
+				auto const szFormattedAbsPath = std::filesystem::absolute(szAbsPath.data()).u8string();
+				std::print(f, "{}{}\n",
+					szFormattedAbsPath,
+					FileSystem::m_pObject->FileExists(szRelPath) ? "" : "[MISSING]"
+				);
+			}
+
+			std::fclose(f);
+		}
 	}
 
 	export int Precache(string_view szRelativePath) noexcept
