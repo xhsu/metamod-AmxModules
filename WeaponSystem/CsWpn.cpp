@@ -277,7 +277,7 @@ template <typename T>
 struct CBasePistol : CPrefabWeapon
 {
 	uint16_t m_usFireEv{}, m_usFireEv2{};
-	static inline vector<string> m_rgszReferencedShellModels{};
+	static inline std::set<string, sv_iless_t> m_rgszReferencedShellModels{};
 
 	qboolean UseDecrement() noexcept override { return true; }
 	int iItemSlot() noexcept override { return T::DAT_SLOT + 1; }
@@ -343,20 +343,36 @@ struct CBasePistol : CPrefabWeapon
 				Resource::Precache(T::MODEL_P_SHIELD);
 		}
 
-		for (auto&& file : T::SOUND_ALL)
-			Resource::Precache(file);
+		if constexpr (requires { T::SOUND_ALL; })
+		{
+			for (auto&& file : T::SOUND_ALL)
+				Resource::Precache(file);
+		}
 
 		for (auto&& file : CRTP()->EXPR_FIRING_SND())
 			Resource::Precache(file);
 
-		m_iShellId = /*m_iShell =*/ Resource::Precache(T::MODEL_SHELL);
+		// Extra care for USP.
+		if constexpr (requires { T::FLAG_SECATK_SILENCER; })
+		{
+			auto const bitsSavedWpnStates = CRTP()->m_iWeaponState;
+			CRTP()->m_iWeaponState = WPNSTATE_USP_SILENCED | WPNSTATE_M4A1_SILENCED;
 
-		if constexpr (requires { T::FLAG_DUAL_WIELDING; })
+			for (auto&& file : CRTP()->EXPR_FIRING_SND())
+				Resource::Precache(file);
+
+			CRTP()->m_iWeaponState = bitsSavedWpnStates;
+		}
+
+		if constexpr (requires { T::MODEL_SHELL; })
+			m_iShellId = /*m_iShell =*/ Resource::Precache(T::MODEL_SHELL);
+
+		if constexpr (requires { T::FLAG_DUAL_WIELDING; T::EV_FIRE_R; T::EV_FIRE_L; })
 		{
 			m_usFireEv = Resource::Precache(T::EV_FIRE_R);	// This goes first.
 			m_usFireEv2 = Resource::Precache(T::EV_FIRE_L);
 		}
-		else
+		else if constexpr (requires { T::EV_FIRE; })
 			m_usFireEv = Resource::Precache(T::EV_FIRE);
 
 		CRTP()->DAT_AMMUNITION = Ammo_Register(*CRTP()->DAT_AMMUNITION);
@@ -373,6 +389,21 @@ struct CBasePistol : CPrefabWeapon
 					auto const QcScript = CRTP()->ParseQcScript(&Event, &Sequence);
 					if (QcScript && QcScript->size() >= 3)
 						::UpdateGunSmokeList(QcScript->at(2));
+					break;
+				}
+				case EQCEV_EF_EJECT_SHELL:
+				{
+					auto const QcScript = CRTP()->ParseQcScript(&Event, &Sequence);
+					if (QcScript && QcScript->size() >= 3)
+					{
+						auto&& [it, bNew] = m_rgszReferencedShellModels.emplace(std::format("models/{}", QcScript->at(2)));
+						Resource::Precache(*it);
+					}
+					break;
+				}
+				case STUDIOEV_PLAYSOUND:
+				{
+					Resource::Precache(Event.options);
 					break;
 				}
 				default:
@@ -792,44 +823,26 @@ struct CBasePistol : CPrefabWeapon
 		}
 	}
 
-	void EjectBrass(Vector const &vecEjectionPortOfs, Vector const& vecVel) const noexcept
+	void EjectBrass(Vector const &vecEjectionPortOfs, Vector const& vecVel, string_view szModel, TE_BOUNCE iSoundType) const noexcept
 	{
 		auto&& [fwd, right, up] = m_pPlayer->pev->v_angle.AngleVectors();
-		auto constexpr soundType = (T::PROTOTYPE_ID == WEAPON_XM1014 || T::PROTOTYPE_ID == WEAPON_M3) ? TE_BOUNCE_SHOTSHELL : TE_BOUNCE_SHELL;
 		auto const vecOrigin = m_pPlayer->pev->origin + m_pPlayer->pev->view_ofs
 			+ up * vecEjectionPortOfs.z + fwd * vecEjectionPortOfs.x + right * vecEjectionPortOfs.y;
 
-		//if (bShootingLeft)
-		//{
-			MsgPVS(SVC_TEMPENTITY, vecOrigin);
-			WriteData(TE_MODEL);
-			WriteData(vecOrigin);
-			WriteData(
-				m_pPlayer->pev->velocity
-					+ vecVel.y * right
-					+ vecVel.z * up
-					+ vecVel.x * fwd
-			);
-			WriteData(msg_angle_t{ pev->angles.yaw });
-			WriteData((uint16_t)m_iShellId);
-			WriteData(soundType);
-			WriteData(static_cast<uint8_t>(50));
-			MsgEnd();
-		//}
-		//else
-		//{
-		//	gmsgBrass::Region<MSG_PVS>(vecOrigin,
-		//		vecOrigin,
-		//		m_pPlayer->pev->velocity
-		//			+ UTIL_Random<float>(50, 70) * right
-		//			+ UTIL_Random<float>(100, 150) * up
-		//			+ 25 * fwd,
-		//		pev->angles.yaw,
-		//		m_iShellId,
-		//		soundType,
-		//		(std::uint8_t)m_pPlayer->entindex()
-		//	);
-		//}
+		MsgPVS(SVC_TEMPENTITY, vecOrigin);
+		WriteData(TE_MODEL);
+		WriteData(vecOrigin);
+		WriteData(
+			m_pPlayer->pev->velocity
+				+ vecVel.y * right
+				+ vecVel.z * up
+				+ vecVel.x * fwd
+		);
+		WriteData(msg_angle_t{ pev->angles.yaw });
+		WriteData((uint16_t)Resource::Precache(szModel));	// A quicker way to get modelindex for local res.
+		WriteData(iSoundType);
+		WriteData(static_cast<uint8_t>(50));
+		MsgEnd();
 	}
 
 	Task Task_BurstFire() noexcept
@@ -1717,10 +1730,10 @@ public:
 						if (!pWeapon->ShouldQcEventResume(pAnim->m_index))
 							co_return;
 
-						// Expecting format: [ATTACHMENT_NUM] [vec3(FWD, RIGHT, UP)]
+						// Expecting format: [ATTACHMENT_NUM] [vec3(FWD, RIGHT, UP)] [MODEL] [SOUND]
 						auto EvOption = pWeapon->ParseQcScript(pEvent, pAnim);
 
-						if (!EvOption || EvOption->size() < 2)
+						if (!EvOption || EvOption->size() < 4)
 							co_return;
 
 						// Handle default val
@@ -1738,7 +1751,14 @@ public:
 							pAnim->m_index,
 							(float)pEvent->frame
 						);
-						pWeapon->EjectBrass(vecEjtPortOfs, *QcVeclocity);
+
+						char szModel[64]{};
+						auto const FmtRes = std::format_to_n(szModel, sizeof(szModel) - 1, "models/{}", EvOption->at(2));
+						szModel[FmtRes.size] = '\0';
+
+						auto const iSoundType = UTIL_StrToNum<TE_BOUNCE>(EvOption->at(3));
+
+						pWeapon->EjectBrass(vecEjtPortOfs, *QcVeclocity, { szModel, (size_t)FmtRes.size }, iSoundType);
 
 					}(this, m_pPlayer, &Event, pAnim),
 					TASK_EQCEV_EF_EJECT_SHELL
@@ -2020,7 +2040,6 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 
 	static inline constexpr char MODEL_V[] = "models/v_glock18.mdl";
 	static inline constexpr char MODEL_V_SHIELD[] = "models/shield/v_shield_glock18.mdl";
-	static inline constexpr char MODEL_SHELL[] = "models/pshell.mdl";
 
 	struct AnimDat_Idle final {
 		static inline constexpr std::array KEYWORD{ "idle"sv, };
@@ -2044,21 +2063,6 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 	struct AnimDat_Reload final {
 		static inline constexpr std::array KEYWORD{ "reload"sv, };
 	};
-
-	static inline constexpr std::array SOUND_ALL
-	{
-		"weapons/glock18-1.wav",
-		"weapons/glock18-2.wav",
-		"weapons/clipout1.wav",
-		"weapons/clipin1.wav",
-		"weapons/sliderelease1.wav",
-		"weapons/slideback1.wav",
-		"weapons/357_cock1.wav",
-		"weapons/de_clipin.wav",
-		"weapons/de_clipout.wav",
-	};
-
-	static inline constexpr char EV_FIRE[] = "events/glock18.sc";
 
 	static inline constexpr auto DAT_ACCY_INIT = 0.9f;
 	static inline constexpr auto DAT_ACCY_RANGE = std::pair{ 0.6f, 0.9f };
@@ -2149,12 +2153,6 @@ struct CPistolUSP : CBasePistol<CPistolUSP>
 
 	static inline constexpr char MODEL_V[] = "models/v_usp.mdl";
 	static inline constexpr char MODEL_V_SHIELD[] = "models/shield/v_shield_usp.mdl";
-	static inline constexpr char MODEL_W[] = "models/w_usp.mdl";
-	static inline constexpr char MODEL_P[] = "models/p_usp.mdl";
-	static inline constexpr char MODEL_P_SHIELD[] = "models/shield/p_shield_usp.mdl";
-	static inline constexpr char MODEL_SHELL[] = "models/pshell.mdl";
-
-	static inline constexpr char ANIM_3RD_PERSON[] = "onehanded";
 
 	struct AnimDat_Idle final
 	{
@@ -2194,21 +2192,6 @@ struct CPistolUSP : CBasePistol<CPistolUSP>
 
 		static inline constexpr auto EXCLUSION = UTIL_MergeArray(/*KEYWORD_SHIELD, */KEYWORD_UNSIL, std::array{ "shield"sv, });
 	};
-
-	static inline constexpr std::array SOUND_ALL
-	{
-		"weapons/usp1.wav",
-		"weapons/usp2.wav",
-		"weapons/usp_unsil-1.wav",
-		"weapons/usp_clipout.wav",
-		"weapons/usp_clipin.wav",
-		"weapons/usp_silencer_on.wav",
-		"weapons/usp_silencer_off.wav",
-		"weapons/usp_sliderelease.wav",
-		"weapons/usp_slideback.wav",
-	};
-
-	static inline constexpr char EV_FIRE[] = "events/usp.sc";
 
 	static inline constexpr auto DAT_ACCY_INIT = 0.92f;
 	static inline constexpr auto DAT_ACCY_RANGE = std::pair{ 0.6f, 0.92f };
