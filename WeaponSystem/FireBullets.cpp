@@ -219,8 +219,18 @@ static Task VFX_WaterSplash(Vector vecSrc, Vector vecEnd) noexcept
 	co_return;
 }
 
-static Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTextureType, float flDamage) noexcept
+static Task VFX_BulletImpact(Vector const vecSrc, TraceResult const tr, char cTextureType, float flDamage) noexcept
 {
+	// Tracer effect.
+	MsgBroadcast(SVC_TEMPENTITY);
+	WriteData(TE_TRACER);
+	WriteData(vecSrc);
+	WriteData(tr.vecEndPos);
+	MsgEnd();
+
+	if (g_engfuncs.pfnPointContents(tr.vecEndPos) == CONTENTS_SKY)	// LUNA: I hate this so much in vanilla CS.
+		co_return;
+
 	[[maybe_unused]] auto const vecDir = (tr.vecEndPos - vecSrc).Normalize();
 
 	// tr.fInWater doesn't work.
@@ -502,15 +512,6 @@ static Task VFX_BulletImpact(Vector vecSrc, TraceResult tr, char cTextureType, f
 			break;
 		}
 	}
-
-	co_await TaskScheduler::NextFrame::Rank[0];
-
-	// Tracer effect.
-	MsgBroadcast(SVC_TEMPENTITY);
-	WriteData(TE_TRACER);
-	WriteData(vecSrc);
-	WriteData(tr.vecEndPos);
-	MsgEnd();
 }
 
 // Go to the trouble of combining multiple pellets into a single damage call.
