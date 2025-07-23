@@ -180,9 +180,6 @@
     <ClCompile Include="BPW.ixx">
       <Filter>Sources</Filter>
     </ClCompile>
-    <ClCompile Include="Effect.Surface.cpp">
-      <Filter>Sources</Filter>
-    </ClCompile>
     <ClCompile Include="Resources.ixx">
       <Filter>CSDK.Ext</Filter>
     </ClCompile>
@@ -195,11 +192,11 @@
     <ClCompile Include="Studio.ixx">
       <Filter>CSDK.Ext</Filter>
     </ClCompile>
-    <ClCompile Include="ViewModelEvents.ixx">
-      <Filter>Sources</Filter>
-    </ClCompile>
     <ClCompile Include="DynExpr.cpp">
       <Filter>CSDK.Ext</Filter>
+    </ClCompile>
+    <ClCompile Include="Buy.ixx">
+      <Filter>Sources</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

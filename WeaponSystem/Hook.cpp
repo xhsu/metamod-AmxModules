@@ -54,7 +54,12 @@ void __fastcall OrpheuF_DropPlayerItem(CBasePlayer* pPlayer, void* edx, char con
 {
 	if (strlen(pszItemName) == 0)
 	{
-		if (UTIL_IsLocalRtti(pPlayer->m_pActiveItem))
+		if (pPlayer->HasShield())
+		{
+			pPlayer->DropShield();
+			return;
+		}
+		else if (UTIL_IsLocalRtti(pPlayer->m_pActiveItem))
 		{
 			pPlayer->m_pActiveItem->Drop();
 			return;
@@ -86,6 +91,14 @@ void __cdecl OrpheuF_packPlayerItem(CBasePlayer* pPlayer, CBasePlayerItem* pItem
 	return HookInfo::packPlayerItem(pPlayer, pItem, packAmmo);
 }
 
+qboolean __cdecl OrpheuF_HandleBuyAliasCommands(CBasePlayer* player, const char* pszCommand) noexcept
+{
+	if (Buy_HandleBuyAliasCommands(player, pszCommand))
+		return true;
+
+	return HookInfo::HandleBuyAliasCommands(player, pszCommand);
+}
+
 bool __cdecl OrpheuF_BuyGunAmmo(CBasePlayer* player, CBasePlayerItem* weapon, bool bBlinkMoney) noexcept
 {
 	return Buy_GunAmmo(
@@ -104,6 +117,7 @@ void DeployInlineHooks() noexcept
 	HookInfo::GetDispatch.ApplyOn(HW::GetDispatch::pfn);
 	HookInfo::DropPlayerItem.ApplyOn(Uranus::BasePlayer::DropPlayerItem::pfn);
 	HookInfo::packPlayerItem.ApplyOn(Uranus::packPlayerItem::pfn);
+	HookInfo::HandleBuyAliasCommands.ApplyOn(Uranus::HandleBuyAliasCommands::pfn);
 	HookInfo::BuyGunAmmo.ApplyOn(Uranus::BuyGunAmmo::pfn);
 }
 
@@ -112,5 +126,6 @@ void RestoreInlineHooks() noexcept
 	HookInfo::GetDispatch.UndoPatch();
 	HookInfo::DropPlayerItem.UndoPatch();
 	HookInfo::packPlayerItem.UndoPatch();
+	HookInfo::HandleBuyAliasCommands.UndoPatch();
 	HookInfo::BuyGunAmmo.UndoPatch();
 }

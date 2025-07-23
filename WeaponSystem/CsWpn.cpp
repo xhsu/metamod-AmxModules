@@ -18,6 +18,7 @@ import GameRules;
 import Message;
 import Models;
 import PlayerItem;
+import Plugin;
 import Prefab;
 import Query;
 import Resources;
@@ -29,6 +30,7 @@ import ZBot;
 
 import Ammo;
 import BPW;
+import Buy;
 import WpnIdAllocator;
 
 using std::array;
@@ -275,6 +277,7 @@ template <typename T>
 struct CBasePistol : CPrefabWeapon
 {
 	uint16_t m_usFireEv{}, m_usFireEv2{};
+	static inline vector<string> m_rgszReferencedShellModels{};
 
 	qboolean UseDecrement() noexcept override { return true; }
 	int iItemSlot() noexcept override { return T::DAT_SLOT + 1; }
@@ -1157,11 +1160,7 @@ public: // Materializing weapon, like CWeaponBox
 			gmsgTextMsg::Send(m_pPlayer->edict(), HUD_PRINTCENTER, "#Weapon_Cannot_Be_Dropped");
 			return;
 		}
-		else if (m_pPlayer->HasShield())
-		{
-			m_pPlayer->DropShield();
-			return;
-		}
+		// Shield Dropping should not be here. Moved to OrpheuF_DropPlayerItem.
 
 		if (!CRTP()->CanDrop())
 		{
@@ -1176,7 +1175,7 @@ public: // Materializing weapon, like CWeaponBox
 		if ((m_pPlayer->pev->weapons & ~(1 << WEAPON_SUIT)) == 0)
 			m_pPlayer->m_iHideHUD |= HIDEHUD_WEAPONS;
 
-#ifdef _DEBUG
+#if 1
 		if (g_pGameRules)	// #FIXME crash when exiting game?
 #endif
 		g_pGameRules->GetNextBestWeapon(m_pPlayer, this);
@@ -1895,6 +1894,114 @@ public:
 		return nullptr;
 	}
 
+public:
+	static CPrefabWeapon* BuyWeapon(CBasePlayer* pPlayer) noexcept
+	{
+		if (!pPlayer->CanPlayerBuy(true))
+			return nullptr;
+
+		static constexpr bool bWpnCanPairWithShield = requires { T::FLAG_CAN_HAVE_SHIELD; };
+		static constexpr bool bWpnHasTeam = requires { T::DAT_TEAM; };
+		static constexpr bool bBanInAssassinationGame = requires { T::FLAG_BAN_IN_AS; };
+		static constexpr bool bWpnHasCost = requires { T::DAT_COST; };
+
+		if constexpr (!bWpnCanPairWithShield)
+		{
+			if (pPlayer->HasShield())
+				return nullptr;
+		}
+
+		for (auto pWpn = pPlayer->m_rgpPlayerItems[T::DAT_SLOT + 1]; pWpn; pWpn = pWpn->m_pNext)
+		{
+			if (pWpn->pev->classname == MAKE_STRING(T::CLASSNAME))
+			{
+				gmsgTextMsg::Send(pPlayer->edict(), HUD_PRINTCENTER, "#Cstrike_Already_Own_Weapon");
+				return nullptr;
+			}
+		}
+
+		if constexpr (bBanInAssassinationGame)
+		{
+			if (g_pGameRules->m_iMapHasVIPSafetyZone != 0)
+			{
+				gmsgTextMsg::Send(pPlayer->edict(), HUD_PRINTCENTER, "#Cstrike_Not_Available");
+				return nullptr;
+			}
+		}
+
+		if constexpr (bWpnHasTeam)
+		{
+			if (pPlayer->m_iTeam != T::DAT_TEAM)
+			{
+				gmsgTextMsg::Unmanaged<MSG_ONE>(g_vecZero, pPlayer->edict(), HUD_PRINTCENTER, "#Alias_Not_Avail", T::NameOfThisWeapon().data());
+				return nullptr;
+			}
+		}
+
+		if constexpr (bWpnHasCost)
+		{
+			if (pPlayer->m_iAccount < T::DAT_COST)
+			{
+				gmsgTextMsg::Send(pPlayer->edict(), HUD_PRINTCENTER, "#Not_Enough_Money");
+				gmsgBlinkAcct::Send(pPlayer->edict(), 2);
+				return nullptr;
+			}
+		}
+
+		// Drop other weapon
+
+		if constexpr (!bWpnCanPairWithShield)
+			pPlayer->DropShield();
+
+		for (auto pWpn = static_cast<CBasePlayerWeapon*>(pPlayer->m_rgpPlayerItems[T::DAT_SLOT + 1]);
+			pWpn;
+			pWpn = static_cast<CBasePlayerWeapon*>(pWpn->m_pNext))
+		{
+			if constexpr (bWpnCanPairWithShield)
+			{
+				if (pPlayer->HasShield() && pPlayer->m_bShieldDrawn && pWpn == pPlayer->m_pActiveItem)
+					pWpn->SecondaryAttack();
+			}
+
+			pPlayer->DropPlayerItem(STRING(pWpn->pev->classname));
+		}
+
+		// Give weapon
+
+		auto const pEdict = g_engfuncs.pfnCreateNamedEntity(MAKE_STRING(T::CLASSNAME));
+
+		if (pev_valid(pEdict) != EValidity::Full)
+		{
+			g_engfuncs.pfnAlertMessage(at_console, "NULL Ent in GiveNamedItemEx classname `%s`!\n", T::CLASSNAME);
+			return nullptr;
+		}
+
+		pEdict->v.origin = pPlayer->pev->origin;
+		pEdict->v.spawnflags |= SF_NORESPAWN;
+
+		gpGamedllFuncs->dllapi_table->pfnSpawn(pEdict);
+		gpGamedllFuncs->dllapi_table->pfnTouch(pEdict, pPlayer->edict());
+
+		// not allow the item to fall to the ground.
+		if (pev_valid(pEdict->v.owner) != EValidity::Full || pEdict->v.owner != pPlayer->edict())
+		{
+			pEdict->v.flags |= FL_KILLME;
+			return nullptr;
+		}
+
+		if constexpr (bWpnHasCost)
+			pPlayer->AddAccount(-T::DAT_COST);
+
+		/* #TODO_PIW_TUTOR
+		if (TheTutor)
+		{
+			TheTutor->OnEvent(EVENT_PLAYER_BOUGHT_SOMETHING, pPlayer);
+		}
+		*/
+
+		return ent_cast<CPrefabWeapon*>(pEdict);
+	}
+
 private:
 	__forceinline [[nodiscard]] T* CRTP() noexcept { static_assert(std::is_base_of_v<CBasePistol, T>); return static_cast<T*>(this); }
 	__forceinline [[nodiscard]] T const* CRTP() const noexcept { static_assert(std::is_base_of_v<CBasePistol, T>); return static_cast<T const*>(this); }
@@ -1913,7 +2020,6 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 
 	static inline constexpr char MODEL_V[] = "models/v_glock18.mdl";
 	static inline constexpr char MODEL_V_SHIELD[] = "models/shield/v_shield_glock18.mdl";
-	static inline constexpr char MODEL_P_SHIELD[] = "models/shield/p_shield_glock18.mdl";
 	static inline constexpr char MODEL_SHELL[] = "models/pshell.mdl";
 
 	struct AnimDat_Idle final {
@@ -1975,6 +2081,8 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 	static inline constexpr auto DAT_BURST_FIRE_INVERVAL = 0.05f;
 	static inline constexpr auto DAT_BURST_FIRE_COUNT = 3;
 
+	static inline constexpr auto DAT_COST = 400;
+
 	static inline constexpr float EXPR_DAMAGE() noexcept {
 		return 25.f;
 	}
@@ -2028,9 +2136,11 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 	//static inline constexpr auto FLAG_SECATK_SILENCER = true;	// Emulate vanilla USP
 	bool m_bBurstFire{};	// A flag to emulate vanilla g18
 	//static inline constexpr auto FLAG_USING_OLD_PW = true;	// Using w_glock.mdl, p_glock.mdl and requires "onehanded" anim.
+	//static inline constexpr auto FLAG_BAN_IN_AS = true;	// Cannot buy in as_ map.
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolGlock>(entvars_t* pev) noexcept;
+template CPrefabWeapon* BuyWeaponByWeaponClass<CPistolGlock>(CBasePlayer* pPlayer) noexcept;
 
 struct CPistolUSP : CBasePistol<CPistolUSP>
 {
@@ -2118,6 +2228,7 @@ struct CPistolUSP : CBasePistol<CPistolUSP>
 	static inline constexpr auto DAT_BULLET_TYPE = BULLET_PLAYER_45ACP;
 	static inline constexpr auto DAT_RANGE_MODIFIER = 0.79f;
 	static inline constexpr auto DAT_FIRE_INTERVAL = 0.225f - 0.075f;
+	static inline constexpr auto DAT_COST = 500;
 
 	inline float EXPR_DAMAGE() const noexcept {
 		return (m_iWeaponState & WPNSTATE_USP_SILENCED) ? 30.f : 34.f;
@@ -2178,6 +2289,7 @@ struct CPistolUSP : CBasePistol<CPistolUSP>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolUSP>(entvars_t* pev) noexcept;
+template CPrefabWeapon* BuyWeaponByWeaponClass<CPistolUSP>(CBasePlayer* pPlayer) noexcept;
 
 struct CPistolP228 : CBasePistol<CPistolP228>
 {
@@ -2245,6 +2357,7 @@ struct CPistolP228 : CBasePistol<CPistolP228>
 	static inline constexpr auto DAT_BULLET_TYPE = BULLET_PLAYER_357SIG;
 	static inline constexpr auto DAT_RANGE_MODIFIER = 0.8f;
 	static inline constexpr auto DAT_FIRE_INTERVAL = 0.2f - 0.05f;
+	static inline constexpr auto DAT_COST = 600;
 
 	static inline constexpr float EXPR_DAMAGE() noexcept {
 		return 32.f;
@@ -2282,6 +2395,7 @@ struct CPistolP228 : CBasePistol<CPistolP228>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolP228>(entvars_t* pev) noexcept;
+template CPrefabWeapon* BuyWeaponByWeaponClass<CPistolP228>(CBasePlayer* pPlayer) noexcept;
 
 struct CPistolDeagle : CBasePistol<CPistolDeagle>
 {
@@ -2349,6 +2463,7 @@ struct CPistolDeagle : CBasePistol<CPistolDeagle>
 	static inline constexpr auto DAT_BULLET_TYPE = BULLET_PLAYER_50AE;
 	static inline constexpr auto DAT_RANGE_MODIFIER = 0.81f;
 	static inline constexpr auto DAT_FIRE_INTERVAL = 0.3f - 0.075f;
+	static inline constexpr auto DAT_COST = 650;
 
 	static inline constexpr float EXPR_DAMAGE() noexcept {
 		return 54.f;
@@ -2386,6 +2501,7 @@ struct CPistolDeagle : CBasePistol<CPistolDeagle>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolDeagle>(entvars_t* pev) noexcept;
+template CPrefabWeapon* BuyWeaponByWeaponClass<CPistolDeagle>(CBasePlayer* pPlayer) noexcept;
 
 struct CPistolFN57 : CBasePistol<CPistolFN57>
 {
@@ -2453,6 +2569,7 @@ struct CPistolFN57 : CBasePistol<CPistolFN57>
 	static inline constexpr auto DAT_BULLET_TYPE = BULLET_PLAYER_57MM;
 	static inline constexpr auto DAT_RANGE_MODIFIER = 0.885f;
 	static inline constexpr auto DAT_FIRE_INTERVAL = 0.2f - 0.05f;
+	static inline constexpr auto DAT_COST = 750;
 
 	static inline constexpr float EXPR_DAMAGE() noexcept {
 		return 20.f;
@@ -2490,6 +2607,7 @@ struct CPistolFN57 : CBasePistol<CPistolFN57>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolFN57>(entvars_t* pev) noexcept;
+template CPrefabWeapon* BuyWeaponByWeaponClass<CPistolFN57>(CBasePlayer* pPlayer) noexcept;
 
 struct CPistolBeretta : CBasePistol<CPistolBeretta>
 {
@@ -2567,6 +2685,7 @@ struct CPistolBeretta : CBasePistol<CPistolBeretta>
 	static inline constexpr auto DAT_BULLET_TYPE = BULLET_PLAYER_9MM;
 	static inline constexpr auto DAT_RANGE_MODIFIER = 0.885f;
 	static inline constexpr auto DAT_FIRE_INTERVAL = 0.2f - 0.078f;
+	static inline constexpr auto DAT_COST = 800;
 
 	static inline constexpr float EXPR_DAMAGE() noexcept {
 		return 20.f;
@@ -2605,6 +2724,7 @@ struct CPistolBeretta : CBasePistol<CPistolBeretta>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolBeretta>(entvars_t* pev) noexcept;
+template CPrefabWeapon* BuyWeaponByWeaponClass<CPistolBeretta>(CBasePlayer* pPlayer) noexcept;
 
 void ClearNewWeapons() noexcept
 {

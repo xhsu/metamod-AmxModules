@@ -245,6 +245,14 @@ namespace Resource
 		return Manager::Get().m_Record[szRelativePath];
 	}
 
+	export void Clear() noexcept
+	{
+		Manager::Get().m_Record.clear();
+		Manager::Get().m_TranscriptedStudio.clear();
+		Manager::Get().m_TranscriptedSprites.clear();
+		Manager::Get().m_SoundLength.clear();
+	}
+
 #ifdef _DEBUG
 	export inline auto Debug_ViewManager() noexcept -> Manager const&
 	{

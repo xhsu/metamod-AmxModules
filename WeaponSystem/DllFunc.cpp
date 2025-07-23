@@ -90,6 +90,7 @@ void fw_ServerDeactivate_Post() noexcept
 
 	// Precache should be done across on every map change.
 	g_bShouldPrecache = true;
+	Resource::Clear();
 
 	// CGameRules class is re-install every map change. Hence we should re-hook it everytime.
 	g_pGameRules = nullptr;
