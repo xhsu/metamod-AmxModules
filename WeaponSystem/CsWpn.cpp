@@ -235,8 +235,8 @@ struct CAnimationGroup final
 		// Unsil
 		if constexpr (requires { CWeapon::FLAG_SECATK_SILENCER; })
 		{
-			static const auto UNSIL_INC = vector{ GetGenericInclusions(), GetUnsilKeywords(), };
-			static const auto UNSIL_EXC = UTIL_ArraySetDiff(GetGenericExclusions(), GetUnsilKeywords());
+			static constexpr auto UNSIL_INC = UTIL_MakeArray2D<&GetGenericInclusions, &GetUnsilKeywords>();
+			static constexpr auto UNSIL_EXC = UTIL_ArraySetDiff<&GetGenericExclusions, &GetUnsilKeywords>();
 			static auto const ANIM_UNSIL{
 				GetAnimsFromKeywords(CWeapon::MODEL_V, AnimDat::KEYWORD, UNSIL_INC, UNSIL_EXC)
 			};
@@ -249,8 +249,8 @@ struct CAnimationGroup final
 		// Shield, will override unsil.
 		if constexpr (requires { CWeapon::FLAG_CAN_HAVE_SHIELD; })
 		{
-			static const auto SHIELD_INC = vector{ GetGenericInclusions(), GetShieldKeywords(), };
-			static const auto SHIELD_EXC = UTIL_ArraySetDiff(GetGenericExclusions(), GetShieldKeywords());
+			static constexpr auto SHIELD_INC = UTIL_MakeArray2D<&GetGenericInclusions, &GetShieldKeywords>();
+			static constexpr auto SHIELD_EXC = UTIL_ArraySetDiff<&GetGenericExclusions, &GetShieldKeywords>();
 			static auto const ANIM_SHIELD{
 				GetAnimsFromKeywords(CWeapon::MODEL_V_SHIELD, AnimDat::KEYWORD, SHIELD_INC, SHIELD_EXC)
 			};
@@ -415,6 +415,11 @@ struct CBasePistol : CPrefabWeapon
 
 	qboolean GetItemInfo(ItemInfo* p) noexcept override
 	{
+		static constexpr bool bExplicitNoItemInfo = requires { T::FLAG_NO_ITEM_INFO; };
+		static constexpr bool bHasPositionInfo = requires { std::integral<decltype(T::DAT_SLOT_POS)>; };
+		static constexpr bool bHasWeightInfo = requires { std::integral<decltype(T::DAT_ITEM_WEIGHT)>; };
+
+#if 0
 		if constexpr (requires { T::FLAG_NO_ITEM_INFO; })
 		{
 			return false;
@@ -435,6 +440,8 @@ struct CBasePistol : CPrefabWeapon
 
 			return true;
 		}
+#endif
+		return false;
 	}
 
 	Task Task_Deploy(TranscriptedSequence const* pAnim) noexcept
@@ -446,6 +453,7 @@ struct CBasePistol : CPrefabWeapon
 
 		m_pPlayer->pev->viewmodel = MAKE_STRING(T::MODEL_V);
 		m_Scheduler.Enroll(Task_WeaponAnim(pAnim), TASK_ANIMATION, true);	// Deploy anim.
+		CRTP()->DispatchQcEvents(pAnim);
 
 		CRTP()->UpdateThirdPersonModel(TASK_BEHAVIOR_DRAW);
 
@@ -2144,7 +2152,7 @@ struct CPistolGlock : CBasePistol<CPistolGlock>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolGlock>(entvars_t* pev) noexcept;
-template CPrefabWeapon* BuyWeaponByWeaponClass<CPistolGlock>(CBasePlayer* pPlayer) noexcept;
+template CPrefabWeapon* BuyWeaponByCppClass<CPistolGlock>(CBasePlayer* pPlayer) noexcept;
 
 struct CPistolUSP : CBasePistol<CPistolUSP>
 {
@@ -2272,7 +2280,7 @@ struct CPistolUSP : CBasePistol<CPistolUSP>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolUSP>(entvars_t* pev) noexcept;
-template CPrefabWeapon* BuyWeaponByWeaponClass<CPistolUSP>(CBasePlayer* pPlayer) noexcept;
+template CPrefabWeapon* BuyWeaponByCppClass<CPistolUSP>(CBasePlayer* pPlayer) noexcept;
 
 struct CPistolP228 : CBasePistol<CPistolP228>
 {
@@ -2378,7 +2386,7 @@ struct CPistolP228 : CBasePistol<CPistolP228>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolP228>(entvars_t* pev) noexcept;
-template CPrefabWeapon* BuyWeaponByWeaponClass<CPistolP228>(CBasePlayer* pPlayer) noexcept;
+template CPrefabWeapon* BuyWeaponByCppClass<CPistolP228>(CBasePlayer* pPlayer) noexcept;
 
 struct CPistolDeagle : CBasePistol<CPistolDeagle>
 {
@@ -2484,7 +2492,7 @@ struct CPistolDeagle : CBasePistol<CPistolDeagle>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolDeagle>(entvars_t* pev) noexcept;
-template CPrefabWeapon* BuyWeaponByWeaponClass<CPistolDeagle>(CBasePlayer* pPlayer) noexcept;
+template CPrefabWeapon* BuyWeaponByCppClass<CPistolDeagle>(CBasePlayer* pPlayer) noexcept;
 
 struct CPistolFN57 : CBasePistol<CPistolFN57>
 {
@@ -2590,7 +2598,7 @@ struct CPistolFN57 : CBasePistol<CPistolFN57>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolFN57>(entvars_t* pev) noexcept;
-template CPrefabWeapon* BuyWeaponByWeaponClass<CPistolFN57>(CBasePlayer* pPlayer) noexcept;
+template CPrefabWeapon* BuyWeaponByCppClass<CPistolFN57>(CBasePlayer* pPlayer) noexcept;
 
 struct CPistolBeretta : CBasePistol<CPistolBeretta>
 {
@@ -2707,7 +2715,7 @@ struct CPistolBeretta : CBasePistol<CPistolBeretta>
 };
 
 template void LINK_ENTITY_TO_CLASS<CPistolBeretta>(entvars_t* pev) noexcept;
-template CPrefabWeapon* BuyWeaponByWeaponClass<CPistolBeretta>(CBasePlayer* pPlayer) noexcept;
+template CPrefabWeapon* BuyWeaponByCppClass<CPistolBeretta>(CBasePlayer* pPlayer) noexcept;
 
 void ClearNewWeapons() noexcept
 {

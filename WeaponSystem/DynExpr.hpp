@@ -518,7 +518,7 @@ enum EBuiltInOpPrecedence : uint8_t
 	OpPrec_Assignment = 228,	// a = b   a += b   a -= b   a *= b   a /= b   a %= b   a <<= b   a >>= b   a &= b   a ^= b   a |= b
 
 	// #17, L
-	OpPrec_Comma,
+	OpPrec_Comma = 1,
 };
 
 enum struct EAssociativity : bool

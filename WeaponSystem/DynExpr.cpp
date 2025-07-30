@@ -15,7 +15,7 @@ void InitializeDynExpr() noexcept
 	if (bInit)
 		return;
 
-	DynExpr::BindConstant<Vector>("vecZero", g_vecZero);
+	DynExpr::BindConstant<Vector>("vecZero", Vector{});
 	DynExpr::BindConstant<double>("NaN", std::numeric_limits<double>::quiet_NaN());
 
 	DynExpr::BindFunction("vec3", +[](double x, double y, double z) noexcept { return Vector{ x, y, z }; });
@@ -38,6 +38,7 @@ void InitializeDynExpr() noexcept
 	DynExpr::BindOperator("-", EAssociativity::Left, OpPrec_Addition, +[](double lhs, double rhs) { return lhs - rhs; });
 	DynExpr::BindOperator("*", EAssociativity::Left, OpPrec_Multiplication, +[](double lhs, double rhs) { return lhs * rhs; });
 	DynExpr::BindOperator("/", EAssociativity::Left, OpPrec_Multiplication, +[](double lhs, double rhs) { return lhs / rhs; });
+	DynExpr::BindOperator("%", EAssociativity::Left, OpPrec_Multiplication, static_cast<double (*)(double, double)>(&std::fmod));
 	DynExpr::BindOperator("**", EAssociativity::Right, OpPrec_PointToMember, +[](double lhs, double rhs) { return std::pow(lhs, rhs); });
 
 	DynExpr::BindOperator("-", EAssociativity::Right, OpPrec_Unary, +[](Vector operand) { return -operand; });
@@ -46,6 +47,14 @@ void InitializeDynExpr() noexcept
 	DynExpr::BindOperator("*", EAssociativity::Left, OpPrec_Multiplication, +[](Vector lhs, double rhs) { return lhs * rhs; });
 	DynExpr::BindOperator("*", EAssociativity::Left, OpPrec_Multiplication, +[](double lhs, Vector rhs) { return lhs * rhs; });
 	DynExpr::BindOperator("/", EAssociativity::Left, OpPrec_Multiplication, +[](Vector lhs, double rhs) { return lhs / rhs; });
+
+	// Bitwise
+	DynExpr::BindOperator("&", EAssociativity::Left, OpPrec_BitAND, +[](double lhs, double rhs) -> double { return std::lround(lhs) & std::lround(rhs); });
+	DynExpr::BindOperator("|", EAssociativity::Left, OpPrec_BitOR, +[](double lhs, double rhs) -> double { return std::lround(lhs) | std::lround(rhs); });
+	DynExpr::BindOperator("^", EAssociativity::Left, OpPrec_BitXOR, +[](double lhs, double rhs) -> double { return std::lround(lhs) ^ std::lround(rhs); });
+	DynExpr::BindOperator("~", EAssociativity::Right, OpPrec_Unary, +[](double operand) -> double { return ~std::lround(operand); });
+	DynExpr::BindOperator("<<", EAssociativity::Left, OpPrec_BitShift, +[](double lhs, double rhs) -> double { return std::lround(lhs) << std::lround(rhs); });
+	DynExpr::BindOperator(">>", EAssociativity::Left, OpPrec_BitShift, +[](double lhs, double rhs) -> double { return std::lround(lhs) >> std::lround(rhs); });
 
 	// Random
 	DynExpr::BindFunction("rd", &UTIL_Random<double>);
@@ -59,7 +68,7 @@ void InitializeDynExpr() noexcept
 	DynExpr::BindFunction("quot", +[](double dividend, double divisor) { auto r = std::div((int32_t)dividend, (int32_t)divisor); return r.quot; });
 	DynExpr::BindFunction("max", static_cast<double (*)(double, double)>(&std::fmax));
 	DynExpr::BindFunction("min", static_cast<double (*)(double, double)>(&std::fmin));
-	DynExpr::BindFunction("clamp", +[](double val, double min, double max) noexcept { return std::clamp(val, min, max); });
+	DynExpr::BindFunction("clamp", &std::clamp<double>);
 
 	// Rounding
 	DynExpr::BindFunction("ceil", static_cast<double (*)(double)>(&std::ceil));
@@ -79,7 +88,7 @@ void InitializeDynExpr() noexcept
 	DynExpr::BindFunction("hypot", static_cast<double (*)(double, double, double)>(&std::hypot));
 	DynExpr::BindOperator(u8"⋅", EAssociativity::Left, OpPrec_Multiplication, +[](Vector lhs, Vector rhs) { return DotProduct(lhs, rhs); });
 	DynExpr::BindOperator(u8"⋅", EAssociativity::Left, OpPrec_Multiplication, +[](Vector2D lhs, Vector2D rhs) { return DotProduct(lhs, rhs); });
-	DynExpr::BindOperator(u8"×", EAssociativity::Left, OpPrec_Multiplication, +[](Vector lhs, Vector rhs) { return CrossProduct(lhs, rhs); });
+	DynExpr::BindOperator(u8"×", EAssociativity::Left, OpPrec_Multiplication, &CrossProduct);
 	DynExpr::BindOperator(u8"×", EAssociativity::Left, OpPrec_Multiplication, +[](Vector2D lhs, Vector2D rhs) { return CrossProduct({ lhs, 0 }, { rhs, 0 }); });
 
 	// Exponential

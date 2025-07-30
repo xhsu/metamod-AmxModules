@@ -85,7 +85,7 @@ namespace Resource
 		vector<move_only_function<void() noexcept>> m_Initializers{};
 		map<string_view, int32_t, RES_INTERNAL_sv_iless_t> m_Record{};
 		map<string_view, TranscriptedStudio, RES_INTERNAL_sv_iless_t> m_TranscriptedStudio{};
-		map<string_view, double, RES_INTERNAL_sv_iless_t> m_SoundLength{};
+		map<string_view, double, RES_INTERNAL_sv_iless_t> m_TranscriptedAudio{};
 		map<string_view, TranscriptedSprite, RES_INTERNAL_sv_iless_t> m_TranscriptedSprites{};
 	};
 
@@ -225,7 +225,7 @@ namespace Resource
 			std::format_to_n(szPath, sizeof(szPath) - 1, "sound/{}", szRelativePath);
 
 			auto const szAbsPath = FileSystem::GetAbsolutePath(szPath);
-			Manager::Get().m_SoundLength[szRelativePath] = Wave::Length(szAbsPath.data());
+			Manager::Get().m_TranscriptedAudio[szRelativePath] = Wave::Length(szAbsPath.data());
 		}
 		else if (std::ranges::ends_with(szRelativePath, ".sc"sv, CaseIgnoredCmp{}))
 		{
@@ -250,7 +250,7 @@ namespace Resource
 		Manager::Get().m_Record.clear();
 		Manager::Get().m_TranscriptedStudio.clear();
 		Manager::Get().m_TranscriptedSprites.clear();
-		Manager::Get().m_SoundLength.clear();
+		Manager::Get().m_TranscriptedAudio.clear();
 	}
 
 #ifdef _DEBUG

@@ -205,43 +205,43 @@ static bool CanBuyThis(CBasePlayer* pPlayer, WeaponIdType iWeapon) noexcept
 	return true;
 }
 
-extern template CPrefabWeapon* BuyWeaponByWeaponClass<struct CPistolGlock>(CBasePlayer* pPlayer) noexcept;
-extern template CPrefabWeapon* BuyWeaponByWeaponClass<struct CPistolUSP>(CBasePlayer* pPlayer) noexcept;
-extern template CPrefabWeapon* BuyWeaponByWeaponClass<struct CPistolP228>(CBasePlayer* pPlayer) noexcept;
-extern template CPrefabWeapon* BuyWeaponByWeaponClass<struct CPistolDeagle>(CBasePlayer* pPlayer) noexcept;
-extern template CPrefabWeapon* BuyWeaponByWeaponClass<struct CPistolFN57>(CBasePlayer* pPlayer) noexcept;
-extern template CPrefabWeapon* BuyWeaponByWeaponClass<struct CPistolBeretta>(CBasePlayer* pPlayer) noexcept;
+extern template CPrefabWeapon* BuyWeaponByCppClass<struct CPistolGlock>(CBasePlayer* pPlayer) noexcept;
+extern template CPrefabWeapon* BuyWeaponByCppClass<struct CPistolUSP>(CBasePlayer* pPlayer) noexcept;
+extern template CPrefabWeapon* BuyWeaponByCppClass<struct CPistolP228>(CBasePlayer* pPlayer) noexcept;
+extern template CPrefabWeapon* BuyWeaponByCppClass<struct CPistolDeagle>(CBasePlayer* pPlayer) noexcept;
+extern template CPrefabWeapon* BuyWeaponByCppClass<struct CPistolFN57>(CBasePlayer* pPlayer) noexcept;
+extern template CPrefabWeapon* BuyWeaponByCppClass<struct CPistolBeretta>(CBasePlayer* pPlayer) noexcept;
 
 bool Buy_HandleBuyAliasCommands(CBasePlayer* pPlayer, std::string_view szCommand) noexcept
 {
 	if (szCommand == "glock" || szCommand == "9x19mm")
 	{
-		BuyWeaponByWeaponClass<CPistolGlock>(pPlayer);
+		BuyWeaponByCppClass<CPistolGlock>(pPlayer);
 		return true;
 	}
 	else if (szCommand == "usp" || szCommand == "km45")
 	{
-		BuyWeaponByWeaponClass<CPistolUSP>(pPlayer);
+		BuyWeaponByCppClass<CPistolUSP>(pPlayer);
 		return true;
 	}
 	else if (szCommand == "p228" || szCommand == "228compact")
 	{
-		BuyWeaponByWeaponClass<CPistolP228>(pPlayer);
+		BuyWeaponByCppClass<CPistolP228>(pPlayer);
 		return true;
 	}
 	else if (szCommand == "deagle" || szCommand == "nighthawk")
 	{
-		BuyWeaponByWeaponClass<CPistolDeagle>(pPlayer);
+		BuyWeaponByCppClass<CPistolDeagle>(pPlayer);
 		return true;
 	}
 	else if (szCommand == "fiveseven" || szCommand == "fn57")
 	{
-		BuyWeaponByWeaponClass<CPistolFN57>(pPlayer);
+		BuyWeaponByCppClass<CPistolFN57>(pPlayer);
 		return true;
 	}
 	else if (szCommand == "elites")
 	{
-		BuyWeaponByWeaponClass<CPistolBeretta>(pPlayer);
+		BuyWeaponByCppClass<CPistolBeretta>(pPlayer);
 		return true;
 	}
 

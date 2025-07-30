@@ -4,7 +4,7 @@ import CBase;
 import PlayerItem;
 
 export template <typename T>
-CPrefabWeapon* BuyWeaponByWeaponClass(CBasePlayer* pPlayer) noexcept
+CPrefabWeapon* BuyWeaponByCppClass(CBasePlayer* pPlayer) noexcept
 {
 	return T::BuyWeapon(pPlayer);
 }
